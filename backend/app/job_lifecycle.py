@@ -7,9 +7,10 @@ from app.schemas import GenerationStatus, JobState
 
 
 _ALLOWED_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
-    JobState.QUEUED: frozenset({JobState.PREPROCESSING, JobState.CANCELLED, JobState.FAILED}),
-    JobState.PREPROCESSING: frozenset({JobState.RUNNING, JobState.CANCELLED, JobState.FAILED}),
-    JobState.RUNNING: frozenset({JobState.SUCCEEDED, JobState.CANCELLED, JobState.FAILED}),
+    # Same-state updates allow progress to advance while a worker remains in a phase.
+    JobState.QUEUED: frozenset({JobState.QUEUED, JobState.PREPROCESSING, JobState.CANCELLED, JobState.FAILED}),
+    JobState.PREPROCESSING: frozenset({JobState.PREPROCESSING, JobState.RUNNING, JobState.CANCELLED, JobState.FAILED}),
+    JobState.RUNNING: frozenset({JobState.RUNNING, JobState.SUCCEEDED, JobState.CANCELLED, JobState.FAILED}),
     JobState.SUCCEEDED: frozenset(),
     JobState.FAILED: frozenset(),
     JobState.CANCELLED: frozenset(),
@@ -25,13 +26,13 @@ def validate_job_transition(current: GenerationStatus, next_status: GenerationSt
     if current.job_id != next_status.job_id:
         raise JobTransitionError("A job transition cannot change the job ID.")
 
+    if next_status.progress < current.progress:
+        raise JobTransitionError("Job progress cannot move backwards.")
+
     if next_status.state not in _ALLOWED_TRANSITIONS[current.state]:
         raise JobTransitionError(
             f"Transition from {current.state.value} to {next_status.state.value} is not allowed."
         )
-
-    if next_status.progress < current.progress:
-        raise JobTransitionError("Job progress cannot move backwards.")
 
     if next_status.state == JobState.SUCCEEDED and next_status.progress != 1.0:
         raise JobTransitionError("A successful job must have progress equal to 1.0.")
