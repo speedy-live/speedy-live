@@ -6,7 +6,6 @@ downloaded, and incomplete or invalid configuration leaves the service unready.
 import importlib.util
 import logging
 from pathlib import Path
-from types import ModuleType
 
 from app.engine import AnimationEngine, EngineRegistry
 from app.engine_contract import EngineManifest, EngineQualificationError
@@ -31,18 +30,29 @@ def load_local_engine(
     if not artifact.is_file():
         raise EngineQualificationError("Configured local model artifact manifest does not exist.")
 
-    spec = importlib.util.spec_from_file_location("speedy_live_local_engine_adapter", adapter)
-    if spec is None or spec.loader is None:
-        raise EngineQualificationError("Could not load the configured local engine adapter.")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec = importlib.util.spec_from_file_location("speedy_live_local_engine_adapter", adapter)
+        if spec is None or spec.loader is None:
+            raise EngineQualificationError("Could not load the configured local engine adapter.")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
 
-    factory = getattr(module, "create_engine", None)
-    if not callable(factory):
-        raise EngineQualificationError("Local engine adapter must define create_engine().")
-    created = factory()
+        factory = getattr(module, "create_engine", None)
+        if not callable(factory):
+            raise EngineQualificationError("Local engine adapter must define create_engine().")
+        created = factory()
+    except EngineQualificationError:
+        raise
+    except Exception as exc:
+        raise EngineQualificationError(
+            f"Local engine adapter import or factory failed: {type(exc).__name__}: {exc}"
+        ) from exc
+
     if not isinstance(created, tuple) or len(created) != 2:
-        raise EngineQualificationError("Local engine adapter returned an invalid engine factory result; create_engine() must return (engine, EngineManifest).")
+        raise EngineQualificationError(
+            "Local engine adapter returned an invalid engine factory result; "
+            "create_engine() must return (engine, EngineManifest)."
+        )
     engine, manifest = created
     if not isinstance(engine, AnimationEngine) or not isinstance(manifest, EngineManifest):
         raise EngineQualificationError("Adapter factory returned invalid engine or manifest types.")
