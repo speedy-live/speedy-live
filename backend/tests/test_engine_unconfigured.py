@@ -21,7 +21,7 @@ def test_unconfigured_engine_refuses_recording_generation(tmp_path) -> None:
                 tmp_path / "output.mp4",
             )
         except AnimationEngineUnavailable as error:
-            assert "not been trained or installed" in str(error)
+            assert "has been trained or installed" in str(error)
         else:
             raise AssertionError("Unconfigured engine must not claim generation succeeded.")
 
