@@ -157,3 +157,43 @@ def test_delete_retries_metadata_finalization_after_file_was_removed(tmp_path, m
     monkeypatch.setattr(repository, "finalize_media_deletion", original_finalize)
     service.delete(media_id=stored.media_id, actor_user_id="customer_0001")
     assert repository.list_pending_media_deletions() == []
+
+
+def test_background_worker_retries_pending_file_deletion(tmp_path, monkeypatch):
+    service, store, repository = setup_service(tmp_path)
+    stored = service.upload(
+        actor_user_id="customer_0001",
+        consent_record_id="consent_record_001",
+        image_bytes=image_bytes(),
+    )
+    original_delete = store.delete_image
+    monkeypatch.setattr(
+        store, "delete_image",
+        lambda media_id: (_ for _ in ()).throw(MediaStorageError("temporary failure")),
+    )
+    with pytest.raises(MediaServiceError):
+        service.delete(media_id=stored.media_id, actor_user_id="customer_0001")
+    monkeypatch.setattr(store, "delete_image", original_delete)
+    result = service.retry_pending_deletions()
+    assert result == {"processed": 1, "deleted": 1, "failed": 0}
+    assert repository.list_pending_media_deletions() == []
+
+
+def test_background_worker_reports_failed_cleanup_without_losing_tombstone(tmp_path, monkeypatch):
+    service, store, repository = setup_service(tmp_path)
+    stored = service.upload(
+        actor_user_id="customer_0001",
+        consent_record_id="consent_record_001",
+        image_bytes=image_bytes(),
+    )
+    original_delete = store.delete_image
+    monkeypatch.setattr(
+        store, "delete_image",
+        lambda media_id: (_ for _ in ()).throw(MediaStorageError("temporary failure")),
+    )
+    with pytest.raises(MediaServiceError):
+        service.delete(media_id=stored.media_id, actor_user_id="customer_0001")
+    result = service.retry_pending_deletions()
+    assert result == {"processed": 1, "deleted": 0, "failed": 1}
+    assert len(repository.list_pending_media_deletions()) == 1
+    monkeypatch.setattr(store, "delete_image", original_delete)
