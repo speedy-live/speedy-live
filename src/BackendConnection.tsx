@@ -19,7 +19,7 @@ type BackendSnapshot = {
   message?: string;
 };
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
 export default function BackendConnection() {
   const [snapshot, setSnapshot] = useState<BackendSnapshot | null>(null);
