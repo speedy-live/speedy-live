@@ -27,6 +27,10 @@ Check:
 - `GET /health` — process is responding.
 - `GET /ready` — reports whether the animation engine is configured.
 
+## Ownership direction
+
+SPEEDY LIVE will not call a third-party hosted animation API. The long-term goal is an engine we own and operate: capture/control, data pipeline, model adaptation/training, inference runtime and streaming delivery. Public research and legally compatible model weights may be studied as internal baselines, but must not be misrepresented as our original model. See `../docs/OUR_OWN_ENGINE_ROADMAP.md`.
+
 ## Deployment direction
 
 Deploy this service separately from the Vite website, on an on-demand GPU-capable host when inference is ready. Keep the GPU provider replaceable. Do not put model weights or secrets in the frontend repository.
