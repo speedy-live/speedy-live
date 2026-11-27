@@ -3,6 +3,7 @@ import AvatarPreview from "./AvatarPreview";
 import PhotoStudio from "./PhotoStudio";
 import MotionCapture from "./MotionCapture";
 import BackendConnection from "./BackendConnection";
+import EngineWorkbench from "./EngineWorkbench";
 import {
   FaceLandmarker,
   FilesetResolver,
@@ -952,6 +953,8 @@ export default function App() {
       </section>
 
       <BackendConnection />
+
+      <EngineWorkbench />
 
       <MotionCapture />
 
