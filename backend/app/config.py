@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     environment: str = "development"
     allowed_origins: str = "http://localhost:5173"
     animation_engine: str = "unconfigured"
+    animation_engine_adapter_path: str = ""
+    animation_model_manifest_path: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
