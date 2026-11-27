@@ -35,7 +35,7 @@ class UnconfiguredAnimationEngine(AnimationEngine):
     version = "0"
 
     async def generate_recording(self, request, source_image, driving_video, output_path):
-        raise AnimationEngineUnavailable("No qualified SPEEDY LIVE animation model has been installed.")
+        raise AnimationEngineUnavailable("No SPEEDY LIVE animation model has been trained or installed.")
 
     async def generate_live_frames(self, source_image, motion):
         raise AnimationEngineUnavailable("The real-time SPEEDY LIVE animation engine is not available.")
