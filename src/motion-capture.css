@@ -1,0 +1,38 @@
+.motion-capture-card {
+  margin-top: 22px;
+  padding: 20px;
+  border: 1px solid #29415a;
+  border-radius: 16px;
+  background: #0a1a2c;
+}
+.motion-capture-card h2 { margin: 0 0 8px; color: #edf5ff; }
+.motion-capture-card p:not(.eyebrow) {
+  max-width: 760px; color: #91a8bf; font-size: 13px; line-height: 1.65;
+}
+.motion-capture-stats {
+  display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0;
+}
+.motion-capture-stats div {
+  min-width: 105px; padding: 12px; border: 1px solid #29415a;
+  border-radius: 10px; background: #0d2034;
+}
+.motion-capture-stats span, .motion-capture-stats strong {
+  display: block;
+}
+.motion-capture-stats span { color: #91a8bf; font-size: 11px; }
+.motion-capture-stats strong { margin-top: 5px; color: #62ddeb; font-size: 19px; }
+.motion-capture-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.motion-capture-actions button {
+  padding: 12px 16px; border: 0; border-radius: 9px;
+  font: inherit; font-size: 12px; font-weight: 800; cursor: pointer;
+}
+.motion-start { color: #04111e; background: #62ddeb; }
+.motion-stop { color: white; background: #a63d55; }
+.motion-export { color: #e7f2ff; background: #183550; border: 1px solid #34516e !important; }
+.motion-export:disabled { opacity: .4; cursor: not-allowed; }
+.motion-capture-message { margin-bottom: 0; }
+@media (max-width: 600px) {
+  .motion-capture-card { padding: 14px; }
+  .motion-capture-actions { flex-direction: column; }
+  .motion-capture-actions button { width: 100%; }
+}
