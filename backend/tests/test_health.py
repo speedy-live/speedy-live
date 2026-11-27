@@ -17,3 +17,4 @@ def test_readiness_does_not_claim_animation_is_available() -> None:
     body = response.json()
     assert body["animation_engine_configured"] is False
     assert body["status"] == "not_ready"
+    assert "engine" not in body
