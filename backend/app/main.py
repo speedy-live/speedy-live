@@ -1,3 +1,6 @@
+from contextlib import asynccontextmanager
+import logging
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException
@@ -7,13 +10,38 @@ from pydantic import Field
 from app.config import get_settings
 from app.engine import AnimationEngineUnavailable, EngineRegistry
 from app.engine_contract import EngineQualificationError
+from app.engine_loader import load_local_engine
 from app.motion_processing import diagnose_motion_sequence
 from app.schemas import MotionFrame
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 engine_registry = EngineRegistry()
+backend_root = Path(__file__).resolve().parents[1]
+local_engine_root = backend_root / "local_engines"
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    adapter_path = settings.animation_engine_adapter_path.strip()
+    artifact_path = settings.animation_model_manifest_path.strip()
+    if settings.animation_engine != "unconfigured" and adapter_path and artifact_path:
+        try:
+            load_local_engine(
+                engine_registry, Path(adapter_path), Path(artifact_path),
+                allowed_root=local_engine_root,
+            )
+        except (OSError, ImportError, AttributeError, TypeError, ValueError) as exc:
+            logger.exception("Local animation engine startup failed; service remains unready: %s", exc)
+            engine_registry.clear()
+    else:
+        logger.info("No local animation engine configured; photo animation remains unavailable.")
+    yield
+    engine_registry.clear()
+
+
 app = FastAPI(
-    title=settings.service_name, version="0.3.0",
+    title=settings.service_name, version="0.4.0", lifespan=lifespan,
     docs_url="/docs" if settings.environment != "production" else None,
     redoc_url=None,
     openapi_url="/openapi.json" if settings.environment != "production" else None,
