@@ -108,6 +108,36 @@ class AccountStore:
         except sqlite3.Error as exc:
             raise AccountStoreError("Could not create customer registration.") from exc
 
+    def issue_customer_verification_token(self, *, email: str,
+                                           lifetime_seconds: int = 1800) -> str | None:
+        """Rotate an unverified customer's token; return None for unknown/verified users."""
+        if not 300 <= lifetime_seconds <= 86400:
+            raise ValueError("Verification lifetime must be between 5 minutes and 24 hours.")
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        now = time.time()
+        try:
+            with self._connect() as db:
+                row = db.execute(
+                    "SELECT user_id FROM accounts WHERE email=? COLLATE NOCASE "
+                    "AND role='customer' AND email_verified=0 AND disabled=0",
+                    (email.strip().lower(),),
+                ).fetchone()
+                if row is None:
+                    return None
+                db.execute(
+                    "UPDATE email_verification_tokens SET consumed_at=? "
+                    "WHERE user_id=? AND consumed_at IS NULL",
+                    (now, row["user_id"]),
+                )
+                db.execute(
+                    "INSERT INTO email_verification_tokens(token_hash,user_id,created_at,expires_at) VALUES(?,?,?,?)",
+                    (token_hash, row["user_id"], now, now + lifetime_seconds),
+                )
+            return token
+        except sqlite3.Error as exc:
+            raise AccountStoreError("Could not issue customer verification token.") from exc
+
     def verify_customer_email(self, *, token: str) -> bool:
         """Consume a single-use, expiring verification token and activate its customer."""
         if not isinstance(token, str) or not 20 <= len(token) <= 256:
