@@ -4,10 +4,12 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import Field
 
-from app.auth import Principal, require_admin, require_customer
+from app.auth import Principal, issue_access_token, require_admin, require_customer
+from app.account_store import AccountStore, AccountStoreError
 from app.config import get_settings
 from app.engine import AnimationEngineUnavailable, EngineRegistry
 from app.engine_contract import EngineQualificationError
