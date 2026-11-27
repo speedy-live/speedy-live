@@ -140,4 +140,13 @@ async def engine_capabilities(mode: str) -> dict[str, object]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except EngineQualificationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return {"available": True, "engine": engine.name, "version": engine.version, "mode": mode}
+    engine_status = engine_registry.status()
+    return {
+        "available": True,
+        "engine": engine.name,
+        "version": engine.version,
+        "mode": mode,
+        "supports_audio_driven_portrait": bool(
+            engine_status.get("supports_audio_driven_portrait", False)
+        ),
+    }
