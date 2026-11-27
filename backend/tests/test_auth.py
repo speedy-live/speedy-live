@@ -62,7 +62,7 @@ def test_tampered_signature_is_rejected():
 
 
 def test_short_signing_key_is_rejected():
-    with pytest.raises(ValueError, match="32 characters"):
+    with pytest.raises(ValueError, match="configured securely"):
         verify_access_token(make_token("admin"), signing_key="short",
                             issuer=ISSUER, audience=AUDIENCE, now=2_000_000_001)
 
