@@ -38,6 +38,14 @@ def validate_image_bytes(data: bytes) -> ValidatedImage:
     if len(data) > MAX_IMAGE_BYTES:
         raise ImageValidationError("Image exceeds the 10 MiB upload limit.")
 
+    # SVG is deliberately not accepted. Identify obvious XML/SVG input before
+    # Pillow's decoder reports it as an unrecognised file.
+    prefix = data[:512].lstrip().lower()
+    if prefix.startswith(b"<svg") or (
+        prefix.startswith(b"<?xml") and b"<svg" in prefix
+    ):
+        raise ImageValidationError("Only JPEG, PNG, and WebP images are supported.")
+
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
@@ -57,7 +65,6 @@ def validate_image_bytes(data: bytes) -> ValidatedImage:
 
                 image.verify()
 
-            # verify() checks file structure; reopen and fully decode the pixels too.
             with Image.open(BytesIO(data)) as decoded:
                 decoded.load()
                 if decoded.format != image_format or decoded.size != (width, height):
