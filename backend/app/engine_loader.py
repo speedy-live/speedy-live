@@ -42,7 +42,7 @@ def load_local_engine(
         raise EngineQualificationError("Local engine adapter must define create_engine().")
     created = factory()
     if not isinstance(created, tuple) or len(created) != 2:
-        raise EngineQualificationError("create_engine() must return (engine, EngineManifest).")
+        raise EngineQualificationError("Local engine adapter returned an invalid engine factory result; create_engine() must return (engine, EngineManifest).")
     engine, manifest = created
     if not isinstance(engine, AnimationEngine) or not isinstance(manifest, EngineManifest):
         raise EngineQualificationError("Adapter factory returned invalid engine or manifest types.")
