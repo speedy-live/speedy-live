@@ -4,7 +4,8 @@
 
 - SQLite-backed account records with salted PBKDF2-HMAC-SHA256 password hashes.
 - Roles are stored on the server as `customer` or `admin`; the login request has no role field.
-- Sign-in is allowed only for accounts whose email has already been marked verified by a trusted provisioning process.
+- Customer sign-in is allowed only after the customer's email has been verified.
+- Admin accounts are trusted, operator-provisioned identities and do not require customer email verification.
 - `POST /auth/login` issues a signed, 15-minute HS256 bearer token.
 - Protected requests verify token signature, algorithm, issuer, audience, expiry and current account status/role.
 - Disabling an account or changing its role invalidates its tokens on the next protected request.
@@ -31,7 +32,7 @@ Never put secrets in Vite variables, browser code, Git, customer responses or lo
 ## Before production launch
 
 This is not yet a complete production identity platform. Still required:
-1. Trusted email verification and customer registration.
+1. Customer registration and a complete email verification workflow (single-use expiring tokens, secure token storage, resend/attempt limits and email delivery).
 2. Admin bootstrap/provisioning workflow, MFA and recovery controls.
 3. Session records, logout/revocation and refresh-token rotation.
 4. Login rate limits, abuse protection and password reset controls.
