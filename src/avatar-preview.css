@@ -1,0 +1,62 @@
+.avatar-preview-card {
+  width: 100%;
+  margin-top: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(86, 157, 255, 0.2);
+  border-radius: 16px;
+  background: #081426;
+}
+
+.avatar-preview-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 18px;
+  color: #e8f4ff;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+.avatar-preview-heading span {
+  color: #38bdf8;
+  font-size: 10px;
+}
+
+.avatar-preview-stage {
+  position: relative;
+  width: 100%;
+  height: 360px;
+  overflow: hidden;
+}
+
+.avatar-preview-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.avatar-preview-message {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  width: 85%;
+  transform: translate(-50%, -50%);
+  color: #a9bdd5;
+  text-align: center;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.avatar-preview-note {
+  padding: 0 16px 14px;
+  color: #8299b6;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+@media (max-width: 600px) {
+  .avatar-preview-stage { height: 300px; }
+  .avatar-preview-heading { flex-wrap: wrap; }
+}
