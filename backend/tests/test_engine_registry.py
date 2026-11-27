@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 
@@ -14,6 +15,9 @@ client = TestClient(app)
 class LocalStubEngine(AnimationEngine):
     name = "local-test-engine"
     version = "0.1.0"
+
+    async def health_check(self):
+        return True
 
     async def generate_recording(self, request, source_image, driving_video, output_path):
         return output_path
@@ -55,6 +59,7 @@ def artifact_manifest(tmp_path, *, commercial=True, consent=True):
 def test_empty_registry_fails_closed():
     registry = EngineRegistry()
     assert registry.status()["configured"] is False
+    assert registry.status()["operational"] is False
     with pytest.raises(AnimationEngineUnavailable):
         registry.get("full_body")
 
@@ -70,8 +75,12 @@ def test_registry_accepts_only_matching_verified_local_artifact(tmp_path):
     registry = EngineRegistry()
     engine = LocalStubEngine()
     registry.register(engine, manifest(checkpoint_sha256=digest), path)
+    assert registry.status()["configured"] is True
+    assert registry.status()["operational"] is False
+    assert asyncio.run(registry.check_runtime()) is True
     assert registry.get("full_body") is engine
     assert registry.status()["engine_id"] == engine.name
+    assert registry.status()["operational"] is True
 
 
 def test_registry_rejects_checkpoint_hash_mismatch(tmp_path):
@@ -96,13 +105,30 @@ def test_registry_rejects_portrait_when_artifact_is_full_body(tmp_path):
     path, digest = artifact_manifest(tmp_path)
     registry = EngineRegistry()
     registry.register(LocalStubEngine(), manifest(checkpoint_sha256=digest), path)
+    assert asyncio.run(registry.check_runtime()) is True
     with pytest.raises(EngineQualificationError, match="does not support portrait"):
         registry.get("portrait", live=True)
+
+
+def test_runtime_health_failure_keeps_engine_unavailable(tmp_path):
+    class BrokenRuntimeEngine(LocalStubEngine):
+        async def health_check(self):
+            raise RuntimeError("model initialization failed")
+
+    path, digest = artifact_manifest(tmp_path)
+    registry = EngineRegistry()
+    registry.register(BrokenRuntimeEngine(), manifest(checkpoint_sha256=digest), path)
+    assert asyncio.run(registry.check_runtime()) is False
+    assert registry.status()["configured"] is True
+    assert registry.status()["operational"] is False
+    with pytest.raises(AnimationEngineUnavailable, match="runtime health"):
+        registry.get("full_body")
 
 
 def test_api_reports_engine_unconfigured():
     assert client.get("/engine/status").json()["configured"] is False
     assert client.get("/ready").json()["status"] == "not_ready"
+    assert client.get("/ready").json()["customer_animation_enabled"] is False
 
 
 def test_api_rejects_unknown_mode():
