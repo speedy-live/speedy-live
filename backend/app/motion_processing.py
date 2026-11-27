@@ -64,11 +64,7 @@ def diagnose_motion_sequence(frames: list[MotionFrame]) -> MotionDiagnostics:
         estimated_fps=1000.0 / typical_interval if typical_interval else 0.0,
         max_gap_ms=max(intervals, default=0),
         body_point_count=sum(len(frame.body_landmarks) for frame in frames),
-        left_hand_point_count=sum(
-            len(hand.landmarks)
-            for frame in frames
-            for hand in []
-        ),
-        right_hand_point_count=0,
+        left_hand_point_count=sum(len(frame.left_hand_landmarks) for frame in frames),
+        right_hand_point_count=sum(len(frame.right_hand_landmarks) for frame in frames),
         face_sample_count=sum(1 for frame in frames if frame.face is not None),
     )
