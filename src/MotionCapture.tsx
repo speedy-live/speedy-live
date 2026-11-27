@@ -24,7 +24,7 @@ type MotionSample = MotionEventDetail & { sequence: number };
 
 const MAX_DURATION_MS = 120_000;
 const UI_REFRESH_MS = 250;
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const API_BASE = (() => { const url = import.meta.env.VITE_API_BASE_URL || ""; return url.endsWith("/") ? url.slice(0, -1) : url; })();
 
 export default function MotionCapture() {
   const samplesRef = useRef<MotionSample[]>([]);
