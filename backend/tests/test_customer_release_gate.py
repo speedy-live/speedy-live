@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from app import main
+from app import auth, main
 from app.config import Settings
 
 TEST_KEY = "test-signing-key-that-is-at-least-32-bytes-long"
@@ -24,6 +24,14 @@ def _token(role="customer"):
     }).encode())
     signature = hmac.new(TEST_KEY.encode(), f"{header}.{claims}".encode(), hashlib.sha256).digest()
     return f"{header}.{claims}.{enc(signature)}"
+
+
+def _configure_auth(monkeypatch):
+    monkeypatch.setattr(auth, "get_settings", lambda: SimpleNamespace(
+        auth_signing_key=TEST_KEY,
+        auth_token_issuer="speedy-live-auth",
+        auth_token_audience="speedy-live-api",
+    ))
 
 
 @pytest.mark.parametrize(
@@ -54,6 +62,7 @@ def test_runtime_health_alone_never_enables_customer_animation(monkeypatch):
 
 
 def test_capabilities_endpoint_stays_blocked_without_release_approval(monkeypatch):
+    _configure_auth(monkeypatch)
     monkeypatch.setattr(main, "settings", Settings())
     monkeypatch.setattr(
         main, "engine_registry",
@@ -71,6 +80,7 @@ def test_capabilities_endpoint_stays_blocked_without_release_approval(monkeypatc
 
 
 def test_engine_status_is_admin_only_and_does_not_claim_customer_release(monkeypatch):
+    _configure_auth(monkeypatch)
     monkeypatch.setattr(main, "settings", Settings())
     monkeypatch.setattr(
         main, "engine_registry",
