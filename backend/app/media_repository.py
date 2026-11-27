@@ -6,12 +6,14 @@ must never accept owner IDs or consent records as trusted client assertions.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
 import sqlite3
+from collections.abc import Iterator
 
 from app.consent import ConsentPurpose, ConsentRecord, ConsentRevocation
 from app.media_access import MediaAccessDenied, authorize_media_use
@@ -80,12 +82,18 @@ class SQLiteMediaRepository:
         except (OSError, sqlite3.Error) as exc:
             raise MediaRepositoryError("Could not initialize private media metadata database.") from exc
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        """Open a transaction and always close its underlying SQLite connection."""
         connection = sqlite3.connect(self.database_path, timeout=10)
         connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 10000")
-        return connection
+        try:
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA busy_timeout = 10000")
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     @staticmethod
     def _utc_now() -> datetime:
