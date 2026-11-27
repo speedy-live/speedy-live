@@ -40,3 +40,11 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Run backend tests
         run: pytest
+
+  backend-container:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get repository code
+        uses: actions/checkout@v4
+      - name: Build backend container
+        run: docker build -f backend/Dockerfile -t speedy-live-ai:ci ./backend
