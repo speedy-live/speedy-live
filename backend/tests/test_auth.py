@@ -12,6 +12,13 @@ from app import auth
 from app.auth import verify_access_token
 from app.main import app
 
+class _ActiveAccountStore:
+    def __init__(self, _path):
+        pass
+    def identity_is_active(self, *, user_id, role):
+        return True
+
+
 KEY = "test-signing-key-that-is-at-least-32-bytes-long"
 ISSUER = "speedy-live-auth"
 AUDIENCE = "speedy-live-api"
@@ -68,6 +75,7 @@ def test_short_signing_key_is_rejected():
 
 
 def test_customer_cannot_access_admin_api_and_admin_cannot_access_customer_api(monkeypatch):
+    monkeypatch.setattr(auth, "AccountStore", _ActiveAccountStore)
     monkeypatch.setattr(auth, "get_settings", lambda: SimpleNamespace(
         auth_signing_key=KEY, auth_token_issuer=ISSUER, auth_token_audience=AUDIENCE
     ))
