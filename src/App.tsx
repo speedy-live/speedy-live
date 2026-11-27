@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import AvatarPreview from "./AvatarPreview";
+import PhotoStudio from "./PhotoStudio";
 import {
   FaceLandmarker,
   FilesetResolver,
@@ -920,6 +921,8 @@ export default function App() {
           </div>
         </div>
       </section>
+
+      <PhotoStudio />
 
       <section className="data-section">
         <div className="section-title">
