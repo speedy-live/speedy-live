@@ -29,13 +29,12 @@ def test_motion_frame_has_sequence_and_timestamp() -> None:
 
 
 def test_recording_request_requires_driving_media() -> None:
-    request = GenerationRequest(
-        mode=GenerationMode.RECORDING,
-        source_media_id="source-image-001",
-        consent_record_id="consent-0001",
-    )
-    with pytest.raises(ValueError):
-        request.validate_mode_requirements()
+    with pytest.raises(ValidationError):
+        GenerationRequest(
+            mode=GenerationMode.RECORDING,
+            source_media_id="source-image-001",
+            consent_record_id="consent-0001",
+        )
 
 
 def test_live_request_does_not_require_driving_clip_id() -> None:
