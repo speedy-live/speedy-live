@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import AvatarPreview from "./AvatarPreview";
 import PhotoStudio from "./PhotoStudio";
+import MotionCapture from "./MotionCapture";
 import {
   FaceLandmarker,
   FilesetResolver,
