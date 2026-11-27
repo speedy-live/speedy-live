@@ -71,3 +71,21 @@ def test_store_generates_unpredictable_distinct_ids(tmp_path):
     first = store.put_image(image_bytes())
     second = store.put_image(image_bytes())
     assert first.media_id != second.media_id
+
+
+def test_read_refuses_media_symlink(tmp_path):
+    store = PrivateLocalMediaStore(tmp_path / "private-media")
+    outside = tmp_path / "outside.jpg"
+    outside.write_bytes(image_bytes())
+    media_id = "b" * 32
+    (tmp_path / "private-media" / f"{media_id}.jpg").symlink_to(outside)
+    with pytest.raises(MediaStorageError):
+        store.read_image(media_id)
+
+
+def test_read_refuses_non_regular_media_file(tmp_path):
+    store = PrivateLocalMediaStore(tmp_path / "private-media")
+    media_id = "c" * 32
+    (tmp_path / "private-media" / f"{media_id}.jpg").mkdir()
+    with pytest.raises(MediaStorageError):
+        store.read_image(media_id)
