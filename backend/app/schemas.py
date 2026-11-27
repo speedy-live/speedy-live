@@ -2,7 +2,7 @@
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class GenerationMode(StrEnum):
@@ -60,12 +60,11 @@ class GenerationRequest(BaseModel):
     consent_record_id: str = Field(min_length=8, max_length=128)
     output_format: Literal["mp4", "webm"] = "mp4"
 
-    @field_validator("motion_media_id")
-    @classmethod
-    def recording_requires_motion_id(cls, value, info):
-        if info.data.get("mode") == GenerationMode.RECORDING and not value:
+    @model_validator(mode="after")
+    def recording_requires_motion_id(self):
+        if self.mode == GenerationMode.RECORDING and not self.motion_media_id:
             raise ValueError("Recording mode requires a driving motion media ID.")
-        return value
+        return self
 
 
 class GenerationStatus(BaseModel):
