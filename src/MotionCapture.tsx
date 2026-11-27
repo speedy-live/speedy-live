@@ -1,23 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import "./motion-capture.css";
 
+type Point = {
+  x: number;
+  y: number;
+  z: number;
+  visibility: number | null;
+};
+
 type MotionEventDetail = {
   timestampMs: number;
-  bodyLandmarks: Array<{
-    x: number;
-    y: number;
-    z: number;
-    visibility: number | null;
-  }>;
-  hands: Array<{
-    handedness: string;
-    landmarks: Array<{
-      x: number;
-      y: number;
-      z: number;
-      visibility: number | null;
-    }>;
-  }>;
+  bodyLandmarks: Point[];
+  hands: Array<{ handedness: string; landmarks: Point[] }>;
   face: {
     yawDegrees: number;
     pitchDegrees: number;
@@ -29,10 +23,12 @@ type MotionEventDetail = {
 type MotionSample = MotionEventDetail & { sequence: number };
 
 const MAX_DURATION_MS = 120_000;
+const UI_REFRESH_MS = 250;
 
 export default function MotionCapture() {
   const samplesRef = useRef<MotionSample[]>([]);
   const startTimeRef = useRef<number | null>(null);
+  const lastTimestampRef = useRef<number>(-1);
   const [recording, setRecording] = useState(false);
   const [sampleCount, setSampleCount] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -41,23 +37,44 @@ export default function MotionCapture() {
   );
 
   useEffect(() => {
+    let lastUiUpdate = 0;
+
     const onMotion = (event: Event) => {
-      if (!startTimeRef.current) return;
+      const startTime = startTimeRef.current;
+      if (startTime === null) return;
+
       const detail = (event as CustomEvent<MotionEventDetail>).detail;
-      const elapsed = detail.timestampMs - startTimeRef.current;
-      if (elapsed < 0 || elapsed > MAX_DURATION_MS) {
-        setRecording(false);
+      if (!detail || !Number.isFinite(detail.timestampMs)) return;
+
+      // Preserve every tracker sample in its original order. Do not smooth,
+      // debounce, or delay facial blendshapes: blink and mouth peaks matter.
+      if (detail.timestampMs <= lastTimestampRef.current) return;
+
+      const elapsed = detail.timestampMs - startTime;
+      if (elapsed < 0) return;
+
+      if (elapsed >= MAX_DURATION_MS) {
         startTimeRef.current = null;
+        setRecording(false);
+        setElapsedMs(MAX_DURATION_MS);
         setMessage("Two-minute capture limit reached. Export your recording.");
         return;
       }
+
+      lastTimestampRef.current = detail.timestampMs;
       samplesRef.current.push({
         ...detail,
         timestampMs: Math.round(elapsed),
         sequence: samplesRef.current.length
       });
-      setSampleCount(samplesRef.current.length);
-      setElapsedMs(elapsed);
+
+      // React UI refresh is throttled; the underlying motion samples are not.
+      // This avoids causing a component rerender for every camera frame.
+      if (detail.timestampMs - lastUiUpdate >= UI_REFRESH_MS) {
+        lastUiUpdate = detail.timestampMs;
+        setSampleCount(samplesRef.current.length);
+        setElapsedMs(elapsed);
+      }
     };
 
     window.addEventListener("speedy-live-pose", onMotion);
@@ -66,16 +83,20 @@ export default function MotionCapture() {
 
   function startRecording() {
     samplesRef.current = [];
+    lastTimestampRef.current = -1;
     setSampleCount(0);
     setElapsedMs(0);
     startTimeRef.current = performance.now();
     setRecording(true);
-    setMessage("Recording movement controls locally in this browser.");
+    setMessage(
+      "Capturing the latest available camera-tracker samples locally. Facial signals are kept unsmoothed."
+    );
   }
 
   function stopRecording() {
     startTimeRef.current = null;
     setRecording(false);
+    setSampleCount(samplesRef.current.length);
     setMessage(
       samplesRef.current.length
         ? "Capture stopped. Export the movement file to keep it."
@@ -89,20 +110,22 @@ export default function MotionCapture() {
       return;
     }
 
+    const lastSample = samplesRef.current[samplesRef.current.length - 1];
     const payload = {
       format: "speedy-live-motion-capture",
-      version: 1,
+      version: 2,
       createdAt: new Date().toISOString(),
-      durationMs: elapsedMs,
+      durationMs: lastSample.timestampMs,
       sampleCount: samplesRef.current.length,
       captureSource: "browser-mediapipe-tracker",
+      timingPolicy: "raw-tracker-samples-no-added-smoothing-or-debounce",
       mediaUploaded: false,
       modelTrainingConsent: false,
-      note: "Movement data only. This file contains no camera video or photograph.",
+      note: "Movement data only. No camera video or photograph is included.",
       samples: samplesRef.current
     };
 
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    const blob = new Blob([JSON.stringify(payload)], {
       type: "application/json"
     });
     const url = URL.createObjectURL(blob);
@@ -112,7 +135,7 @@ export default function MotionCapture() {
       .toISOString()
       .replace(/[:.]/g, "-")}.json`;
     anchor.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setMessage("Movement JSON downloaded to your device.");
   }
 
@@ -122,9 +145,10 @@ export default function MotionCapture() {
         <p className="eyebrow">INTERNAL RESEARCH TOOL</p>
         <h2>Movement data capture</h2>
         <p>
-          Capture timestamped body, hand and facial controls for internal
-          research. This does not record camera video, upload photographs,
-          train a model or animate an image.
+          Captures timestamped body, hand and facial controls locally.
+          Facial signals are not intentionally delayed or smoothed, so short
+          events such as blinks are preserved in the captured samples.
+          This does not yet animate the uploaded photograph.
         </p>
       </div>
 
