@@ -1,5 +1,7 @@
 from functools import lru_cache
+from urllib.parse import urlsplit
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +22,35 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def validate_production_origins(self):
+        if self.environment.lower() != "production":
+            return self
+
+        origins = self.cors_origins
+        if not origins or "*" in origins:
+            raise ValueError(
+                "Production ALLOWED_ORIGINS must contain explicit HTTPS website origins; "
+                "wildcards and empty values are not allowed."
+            )
+
+        for origin in origins:
+            parsed = urlsplit(origin)
+            if (
+                parsed.scheme != "https"
+                or not parsed.netloc
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+                or parsed.username
+                or parsed.password
+            ):
+                raise ValueError(
+                    "Every production ALLOWED_ORIGINS entry must be an HTTPS origin "
+                    "without a path, query, credentials, or fragment."
+                )
+        return self
 
     @property
     def customer_release_approved(self) -> bool:
