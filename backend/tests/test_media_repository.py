@@ -118,7 +118,7 @@ def test_delete_metadata_is_owner_only_and_removes_record(tmp_path):
     repo, record = setup_repo(tmp_path)
     register(repo, record)
     with pytest.raises(MediaAccessDenied):
-        repo.delete_media_record(media_id="a" * 32, actor_user_id="customer_0002")
+        repo.begin_media_deletion(media_id="a" * 32, actor_user_id="customer_0002")
     removed = repo.begin_media_deletion(media_id="a" * 32, actor_user_id="customer_0001")
     assert removed.media_id == "a" * 32
     assert len(repo.list_pending_media_deletions()) == 1
