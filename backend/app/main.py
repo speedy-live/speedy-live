@@ -31,17 +31,23 @@ async def lifespan(_: FastAPI):
                 engine_registry, Path(adapter_path), Path(artifact_path),
                 allowed_root=local_engine_root,
             )
-        except (OSError, ImportError, AttributeError, TypeError, ValueError) as exc:
+            if not await engine_registry.check_runtime():
+                logger.error("Local animation engine failed runtime qualification: %s",
+                             engine_registry.status().get("runtime_error"))
+                engine_registry.clear()
+        except Exception as exc:
             logger.exception("Local animation engine startup failed; service remains unready: %s", exc)
             engine_registry.clear()
     else:
         logger.info("No local animation engine configured; photo animation remains unavailable.")
-    yield
-    engine_registry.clear()
+    try:
+        yield
+    finally:
+        engine_registry.clear()
 
 
 app = FastAPI(
-    title=settings.service_name, version="0.4.0", lifespan=lifespan,
+    title=settings.service_name, version="0.5.0", lifespan=lifespan,
     docs_url="/docs" if settings.environment != "production" else None,
     redoc_url=None,
     openapi_url="/openapi.json" if settings.environment != "production" else None,
@@ -60,14 +66,18 @@ async def health() -> dict[str, str]:
 @app.get("/ready", tags=["operations"])
 async def readiness() -> dict[str, object]:
     engine = engine_registry.status()
-    configured = bool(engine["configured"])
+    operational = bool(engine["operational"])
     return {
-        "status": "ready" if configured else "not_ready",
-        "animation_engine_configured": configured,
+        "status": "ready" if operational else "not_ready",
+        "service_alive": True,
+        "animation_engine_configured": bool(engine["configured"]),
+        "runtime_health_check_passed": bool(engine["runtime_healthy"]),
+        "customer_animation_enabled": operational,
         "engine": engine,
         "message": (
-            "An engine is registered; runtime inference still requires qualification tests."
-            if configured else "No qualified local engine is registered. Photo animation is unavailable."
+            "The local animation engine passed its runtime self-test."
+            if operational else
+            "The service is alive, but no operational animation engine has passed runtime qualification."
         ),
     }
 
