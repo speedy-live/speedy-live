@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     auth_token_issuer: str = "speedy-live-auth"
     auth_token_audience: str = "speedy-live-api"
     auth_database_path: str = "./data/auth.sqlite3"
+    customer_frontend_url: str = "http://localhost:5173"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_starttls: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
