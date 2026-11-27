@@ -11,6 +11,7 @@
 - Disabling an account or changing its role invalidates its tokens on the next protected request.
 - `POST /auth/register` creates customer-only, unverified accounts and sends a 30-minute verification link through configured SMTP.
 - `POST /auth/verify-email` consumes a hashed, single-use, expiring token; repeated or expired tokens are rejected.
+- `POST /auth/resend-verification` rotates outstanding customer tokens and returns a generic response that does not reveal whether an email is registered.
 - Admin accounts bypass customer email verification and remain restricted to trusted provisioning.
 - Password reset, verification resend, refresh-token rotation, logout/revocation and MFA endpoints do not exist yet.
 
@@ -35,7 +36,7 @@ Never put secrets in Vite variables, browser code, Git, customer responses or lo
 ## Before production launch
 
 This is not yet a complete production identity platform. Still required:
-1. Verification resend controls, registration/login rate limits, email abuse controls and a verified frontend email-link handler.
+1. Registration/login/resend rate limits and abuse controls, plus a verified frontend email-link handler.
 2. Admin bootstrap/provisioning workflow, MFA and recovery controls.
 3. Session records, logout/revocation and refresh-token rotation.
 4. Login rate limits, abuse protection and password reset controls.
