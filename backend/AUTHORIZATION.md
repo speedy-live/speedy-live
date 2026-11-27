@@ -9,12 +9,15 @@
 - `POST /auth/login` issues a signed, 15-minute HS256 bearer token.
 - Protected requests verify token signature, algorithm, issuer, audience, expiry and current account status/role.
 - Disabling an account or changing its role invalidates its tokens on the next protected request.
-- No public registration, role promotion, email verification, password reset, refresh-token or logout endpoint exists yet.
+- `POST /auth/register` creates customer-only, unverified accounts and sends a 30-minute verification link through configured SMTP.
+- `POST /auth/verify-email` consumes a hashed, single-use, expiring token; repeated or expired tokens are rejected.
+- Admin accounts bypass customer email verification and remain restricted to trusted provisioning.
+- Password reset, verification resend, refresh-token rotation, logout/revocation and MFA endpoints do not exist yet.
 
 ## Route classification
 
 - `/health`, `/ready`: public operational status only.
-- `/auth/login`: public sign-in for previously provisioned and verified accounts.
+- `/auth/register`, `/auth/verify-email`, `/auth/login`: public customer registration, verification and sign-in; admin sign-in uses trusted provisioned identities.
 - `/auth/me`, `/customer/*`, `/engine/capabilities/{mode}`: CUSTOMER ONLY.
 - `/admin/auth/me`, `/admin/*`, `/engine/status`: ADMIN ONLY.
 - `/motion/diagnostics`: shared stateless diagnostics only; it does not read or return customer records.
@@ -32,7 +35,7 @@ Never put secrets in Vite variables, browser code, Git, customer responses or lo
 ## Before production launch
 
 This is not yet a complete production identity platform. Still required:
-1. Customer registration and a complete email verification workflow (single-use expiring tokens, secure token storage, resend/attempt limits and email delivery).
+1. Verification resend controls, registration/login rate limits, email abuse controls and a verified frontend email-link handler.
 2. Admin bootstrap/provisioning workflow, MFA and recovery controls.
 3. Session records, logout/revocation and refresh-token rotation.
 4. Login rate limits, abuse protection and password reset controls.
@@ -43,3 +46,11 @@ This is not yet a complete production identity platform. Still required:
 9. Production secrets, persistent encrypted storage, backup and recovery tests.
 
 Customers cannot create admin accounts through the API. Do not add a public account-creation route that accepts a role.
+
+## Customer email verification configuration
+
+Set these only on the backend host:
+- `CUSTOMER_FRONTEND_URL`: customer website origin used to build the verification link.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_STARTTLS`.
+
+The registration endpoint returns a generic success message and never returns the verification token. The database stores only the SHA-256 token hash. SMTP must be configured before registration is enabled. The current backend creates a pending account before attempting delivery; if SMTP delivery fails, that email remains reserved and a secure resend endpoint is still required. Do not treat this as production-complete until resend/rate-limit handling and the customer frontend verification page are implemented.
