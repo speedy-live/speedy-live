@@ -2,7 +2,6 @@
 
 This validates declarations; it cannot independently prove that consent or a licence is genuine.
 """
-from pathlib import PurePosixPath
 from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
