@@ -11,6 +11,15 @@ def test_account_authentication_requires_verified_email(tmp_path):
     assert store.authenticate(email="customer@example.test", password="correct horse battery") is None
 
 
+def test_admin_does_not_require_customer_email_verification(tmp_path):
+    store = AccountStore(str(tmp_path / "accounts.sqlite3"))
+    user_id = store.create_account(email="admin@example.test", password="correct horse battery",
+                                   role="admin", email_verified=False)
+    identity = store.authenticate(email="admin@example.test", password="correct horse battery")
+    assert identity == {"user_id": user_id, "role": "admin", "email": "admin@example.test"}
+    assert store.identity_is_active(user_id=user_id, role="admin")
+
+
 def test_verified_customer_can_authenticate_and_role_is_store_controlled(tmp_path):
     store = AccountStore(str(tmp_path / "accounts.sqlite3"))
     user_id = store.create_account(email="customer@example.test", password="correct horse battery",
