@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Annotated, Literal
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from app.account_store import AccountStore
+from app.account_store import AccountStore, AccountStoreError
 from app.config import get_settings
 
 Role=Literal["customer","admin"]
@@ -69,7 +69,7 @@ async def get_current_principal(credentials: Annotated[HTTPAuthorizationCredenti
         if not AccountStore(settings.auth_database_path).identity_is_active(user_id=principal.user_id,role=principal.role):
             raise ValueError("Account is inactive or its role changed.")
         return principal
-    except (ValueError,TypeError,json.JSONDecodeError,UnicodeDecodeError) as exc:
+    except (ValueError,TypeError,json.JSONDecodeError,UnicodeDecodeError,AccountStoreError) as exc:
         raise HTTPException(status_code=401,detail="Invalid or expired sign-in.",headers={"WWW-Authenticate":"Bearer"}) from exc
 
 async def require_customer(principal: Annotated[Principal,Depends(get_current_principal)]) -> Principal:
