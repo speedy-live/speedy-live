@@ -1,11 +1,8 @@
-"""Stable internal contracts shared by future capture, training and inference layers.
-
-These schemas do not accept media uploads and do not perform model inference.
-"""
+"""Stable internal contracts shared by capture, research and inference layers."""
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class GenerationMode(StrEnum):
@@ -29,12 +26,18 @@ class Landmark(BaseModel):
     visibility: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
+class HandLandmarks(BaseModel):
+    handedness: str = Field(min_length=1, max_length=32)
+    landmarks: list[Landmark] = Field(default_factory=list, max_length=30)
+
+
 class FaceControls(BaseModel):
     yaw_degrees: float = Field(default=0.0, ge=-90.0, le=90.0)
     pitch_degrees: float = Field(default=0.0, ge=-90.0, le=90.0)
     roll_degrees: float = Field(default=0.0, ge=-90.0, le=90.0)
     blendshapes: dict[str, float] = Field(default_factory=dict)
 
+    @field_validator("blendshapes")
     @classmethod
     def validate_blendshape_scores(cls, values: dict[str, float]) -> dict[str, float]:
         if any(not 0.0 <= score <= 1.0 for score in values.values()):
@@ -46,8 +49,7 @@ class MotionFrame(BaseModel):
     sequence: int = Field(ge=0)
     timestamp_ms: int = Field(ge=0)
     body_landmarks: list[Landmark] = Field(default_factory=list, max_length=100)
-    left_hand_landmarks: list[Landmark] = Field(default_factory=list, max_length=30)
-    right_hand_landmarks: list[Landmark] = Field(default_factory=list, max_length=30)
+    hands: list[HandLandmarks] = Field(default_factory=list, max_length=2)
     face: FaceControls = Field(default_factory=FaceControls)
 
 
@@ -58,10 +60,12 @@ class GenerationRequest(BaseModel):
     consent_record_id: str = Field(min_length=8, max_length=128)
     output_format: Literal["mp4", "webm"] = "mp4"
 
-    def validate_mode_requirements(self) -> "GenerationRequest":
-        if self.mode == GenerationMode.RECORDING and not self.motion_media_id:
+    @field_validator("motion_media_id")
+    @classmethod
+    def recording_requires_motion_id(cls, value, info):
+        if info.data.get("mode") == GenerationMode.RECORDING and not value:
             raise ValueError("Recording mode requires a driving motion media ID.")
-        return self
+        return value
 
 
 class GenerationStatus(BaseModel):
