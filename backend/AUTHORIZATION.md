@@ -1,31 +1,44 @@
-# API authentication and role separation
+# SPEEDY LIVE authentication and authorization
 
-The API verifies short-lived HS256 bearer tokens. A trusted authentication service must
-issue them; this API intentionally has no public token-minting or role-changing endpoint.
+## Implemented foundation
 
-Required claims: `sub` (immutable user ID), `role` (`customer` or `admin`),
-`iss`, `aud`, `iat`, and `exp`. Tokens are limited to one hour. The API checks
-the signature, issuer, audience, role, issue time and expiry on every protected request.
+- SQLite-backed account records with salted PBKDF2-HMAC-SHA256 password hashes.
+- Roles are stored on the server as `customer` or `admin`; the login request has no role field.
+- Sign-in is allowed only for accounts whose email has already been marked verified by a trusted provisioning process.
+- `POST /auth/login` issues a signed, 15-minute HS256 bearer token.
+- Protected requests verify token signature, algorithm, issuer, audience, expiry and current account status/role.
+- Disabling an account or changing its role invalidates its tokens on the next protected request.
+- No public registration, role promotion, email verification, password reset, refresh-token or logout endpoint exists yet.
 
-Server environment variables:
-- `AUTH_SIGNING_KEY`: secret of at least 32 characters, stored only on the backend.
-- `AUTH_TOKEN_ISSUER`: trusted issuer identifier (default `speedy-live-auth`).
-- `AUTH_TOKEN_AUDIENCE`: this API's audience (default `speedy-live-api`).
+## Route classification
 
-Never place the signing key in Vite/browser variables, Git, customer responses, or logs.
-Never accept a role or user ID from a request body as authentication. Admin tokens must
-be issued only after a trusted admin authentication process with MFA and server-side
-role assignment. Customer accounts cannot promote themselves.
+- `/health`, `/ready`: public operational status only.
+- `/auth/login`: public sign-in for previously provisioned and verified accounts.
+- `/auth/me`, `/customer/*`, `/engine/capabilities/{mode}`: CUSTOMER ONLY.
+- `/admin/auth/me`, `/admin/*`, `/engine/status`: ADMIN ONLY.
+- `/motion/diagnostics`: shared stateless diagnostics only; it does not read or return customer records.
+- Media repository/storage/service classes: internal only; not exposed as HTTP routes.
 
-Route classification:
-- `/health`, `/ready`: operational status only.
-- `/customer/*`: CUSTOMER ONLY; requires a customer principal.
-- `/admin/*`: ADMIN ONLY; requires an admin principal.
-- `/engine/status`: ADMIN ONLY.
-- `/engine/capabilities/{mode}`: CUSTOMER ONLY and additionally gated by model release approval.
-- `/motion/diagnostics`: SHARED BACKEND SERVICE; accepts motion diagnostics only and does not expose customer records.
+## Backend environment
 
-This is the authorization foundation, not a complete login/session product. Token
-issuance, password/email verification, refresh-token rotation, revocation/session storage,
-MFA enrollment, admin account provisioning, CSRF protections for cookie sessions, and
-frontend login/dashboard routing remain separate work before production launch.
+- `AUTH_SIGNING_KEY`: backend-only secret with at least 32 characters; use a random high-entropy secret.
+- `AUTH_TOKEN_ISSUER`: trusted issuer identifier.
+- `AUTH_TOKEN_AUDIENCE`: API audience.
+- `AUTH_DATABASE_PATH`: persistent private SQLite account database path.
+
+Never put secrets in Vite variables, browser code, Git, customer responses or logs. Back up the account database securely and restrict its filesystem permissions. Use persistent encrypted storage in production.
+
+## Before production launch
+
+This is not yet a complete production identity platform. Still required:
+1. Trusted email verification and customer registration.
+2. Admin bootstrap/provisioning workflow, MFA and recovery controls.
+3. Session records, logout/revocation and refresh-token rotation.
+4. Login rate limits, abuse protection and password reset controls.
+5. Frontend customer/admin login and separate dashboard routing.
+6. Secure customer media endpoints deriving owner identity only from the verified principal.
+7. CSRF protections if browser cookies are adopted; prefer secure HttpOnly cookies over localStorage for browser sessions.
+8. Audit logs for admin actions, security events and account changes.
+9. Production secrets, persistent encrypted storage, backup and recovery tests.
+
+Customers cannot create admin accounts through the API. Do not add a public account-creation route that accepts a role.
