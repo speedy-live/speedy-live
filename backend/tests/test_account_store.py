@@ -21,6 +21,20 @@ def test_customer_verification_token_is_single_use_and_activates_account(tmp_pat
     assert store.identity_is_active(user_id=user_id, role="customer")
 
 
+def test_resending_customer_verification_invalidates_previous_token(tmp_path):
+    store = AccountStore(str(tmp_path / "accounts.sqlite3"))
+    store.create_customer_registration(
+        email="pending@example.test", password="correct horse battery"
+    )
+    old_token = store.issue_customer_verification_token(email="pending@example.test")
+    new_token = store.issue_customer_verification_token(email="pending@example.test")
+    assert old_token
+    assert new_token
+    assert old_token != new_token
+    assert store.verify_customer_email(token=old_token) is False
+    assert store.verify_customer_email(token=new_token) is True
+
+
 def test_customer_verification_rejects_unknown_token(tmp_path):
     store = AccountStore(str(tmp_path / "accounts.sqlite3"))
     assert store.verify_customer_email(token="x" * 40) is False
