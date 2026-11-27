@@ -24,6 +24,7 @@ type MotionSample = MotionEventDetail & { sequence: number };
 
 const MAX_DURATION_MS = 120_000;
 const UI_REFRESH_MS = 250;
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\\/$/, "");
 
 export default function MotionCapture() {
   const samplesRef = useRef<MotionSample[]>([]);
@@ -32,6 +33,8 @@ export default function MotionCapture() {
   const [recording, setRecording] = useState(false);
   const [sampleCount, setSampleCount] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<Record<string, number> | null>(null);
   const [message, setMessage] = useState(
     "Start camera tracking before recording movement data."
   );
@@ -58,6 +61,14 @@ export default function MotionCapture() {
         setRecording(false);
         setElapsedMs(MAX_DURATION_MS);
         setMessage("Two-minute capture limit reached. Export your recording.");
+        return;
+      }
+
+      if (samplesRef.current.length >= 3000) {
+        startTimeRef.current = null;
+        setRecording(false);
+        setSampleCount(samplesRef.current.length);
+        setMessage("The 3,000-sample backend diagnostics limit has been reached. Stop and run diagnostics.");
         return;
       }
 
@@ -102,6 +113,44 @@ export default function MotionCapture() {
         ? "Capture stopped. Export the movement file to keep it."
         : "No movement samples were captured. Start camera tracking first."
     );
+  }
+
+  async function sendDiagnostics() {
+    const samples = samplesRef.current;
+    if (!samples.length || recording || diagnosing) return;
+    setDiagnosing(true);
+    setDiagnostics(null);
+    setMessage("Sending movement landmarks to SPEEDY LIVE backend for diagnostics…");
+    try {
+      const response = await fetch(API_BASE + "/motion/diagnostics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(samples.map((sample) => ({
+          sequence: sample.sequence,
+          timestamp_ms: sample.timestampMs,
+          body_landmarks: sample.bodyLandmarks,
+          hands: sample.hands,
+          face: {
+            yaw_degrees: sample.face.yawDegrees,
+            pitch_degrees: sample.face.pitchDegrees,
+            roll_degrees: sample.face.rollDegrees,
+            blendshapes: sample.face.blendshapes
+          }
+        }))),
+        signal: AbortSignal.timeout(20000)
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        const detail = typeof result.detail === "string" ? result.detail : "HTTP " + response.status;
+        throw new Error(detail);
+      }
+      setDiagnostics(result as Record<string, number>);
+      setMessage("Backend diagnostics completed. This analyses motion data only; it does not animate the photograph.");
+    } catch (error) {
+      setMessage(error instanceof Error ? "Backend diagnostics unavailable: " + error.message : "Backend diagnostics unavailable. Check the backend URL and CORS settings.");
+    } finally {
+      setDiagnosing(false);
+    }
   }
 
   function exportRecording() {
@@ -175,7 +224,17 @@ export default function MotionCapture() {
         >
           Export movement JSON
         </button>
+        <button className="motion-export" onClick={sendDiagnostics} disabled={!sampleCount || recording || diagnosing}>
+          {diagnosing ? "Checking backend…" : "Run backend diagnostics"}
+        </button>
       </div>
+      {diagnostics && (
+        <div className="motion-capture-stats" aria-live="polite">
+          <div><span>Estimated FPS</span><strong>{Number(diagnostics.estimated_fps ?? 0).toFixed(1)}</strong></div>
+          <div><span>Duration</span><strong>{(Number(diagnostics.duration_ms ?? 0) / 1000).toFixed(1)}s</strong></div>
+          <div><span>Largest gap</span><strong>{diagnostics.max_gap_ms ?? 0}ms</strong></div>
+        </div>
+      )}
       <p className="motion-capture-message" aria-live="polite">{message}</p>
     </section>
   );
