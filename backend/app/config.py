@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     auth_signing_key: str = ""
     auth_token_issuer: str = "speedy-live-auth"
     auth_token_audience: str = "speedy-live-api"
+    auth_database_path: str = "./data/auth.sqlite3"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
