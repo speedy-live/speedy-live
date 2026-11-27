@@ -62,7 +62,7 @@ def test_rejects_commercial_dataset_without_consent_audit():
 def test_rejects_asset_without_required_purpose():
     with pytest.raises(DatasetManifestError, match="does not permit"):
         validate_dataset_manifest_json(json.dumps(sample_dataset(
-            assets=[sample_asset(permitted_purposes=["validation"])]
+            assets=[sample_asset(permitted_purposes=["validation"], commercial_use_allowed=False)]
         )))
 
 
