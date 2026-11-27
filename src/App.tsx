@@ -31,7 +31,10 @@ const FACE_KEYS = [
 ];
 
 const POSE_NAMES = [
-  "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+  "nose",
+  "left_eye_inner", "left_eye", "left_eye_outer",
+  "right_eye_inner", "right_eye", "right_eye_outer",
+  "left_ear", "right_ear", "mouth_left", "mouth_right",
   "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
   "left_wrist", "right_wrist", "left_pinky", "right_pinky",
   "left_index", "right_index", "left_thumb", "right_thumb",
