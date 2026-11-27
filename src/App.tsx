@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import AvatarPreview from "./AvatarPreview";
 import PhotoStudio from "./PhotoStudio";
 import MotionCapture from "./MotionCapture";
+import BackendConnection from "./BackendConnection";
 import {
   FaceLandmarker,
   FilesetResolver,
@@ -949,6 +950,8 @@ export default function App() {
           </div>
         </div>
       </section>
+
+      <BackendConnection />
 
       <MotionCapture />
 
