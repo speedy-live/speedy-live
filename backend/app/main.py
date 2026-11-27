@@ -94,7 +94,6 @@ async def readiness() -> dict[str, object]:
         "runtime_health_check_passed": bool(engine["runtime_healthy"]),
         "customer_release_approved": settings.customer_release_approved,
         "customer_animation_enabled": customer_enabled,
-        "engine": engine,
         "message": ("The local animation engine is approved for customer use."
                     if customer_enabled else
                     "The service is alive, but customer animation is disabled until runtime checks "
