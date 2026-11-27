@@ -15,6 +15,16 @@ The customer experience should eventually unify both paths, but their models, qu
 
 ## Candidate review and licensing decision
 
+### Wan-Animate-2 — first full-body candidate to benchmark, not yet approved
+
+The official Wan-Animate-2 repository publishes inference code and a 14B checkpoint under Apache-2.0. Its README says the standard configuration is tuned for 8× A800 GPUs and that 480P was tested on 2× A800 GPUs. The project describes a Lite variant intended to reduce latency toward real-time streaming, but the currently listed downloadable checkpoints are the 14B model and its distillation model; the reviewed release notes do not identify a separately downloadable Lite checkpoint.
+
+**Decision:** put the published Wan-Animate-2 14B distillation checkpoint at the top of the full-body/offline benchmark queue, while investigating whether a separately usable Lite implementation/checkpoint exists. Do not call it our live engine yet. The published hardware guidance is substantial, and the repository's general real-time/Lite description is not proof that the released checkpoint meets our live-call latency target. Verify all checkpoint, dependency, detector and dataset terms independently before commercial integration.
+
+Official sources:
+- https://github.com/Wan-Video/Wan-Animate-2
+- https://huggingface.co/Wan-AI/Wan2.2-Animate-2-14B
+
 ### PersonaLive — do not adopt for commercial use at present
 
 The official repository describes PersonaLive as a real-time, streamable portrait animation framework and advertises a streaming path. However, its README explicitly states that the project is for academic research only. An Apache-2.0 repository badge does not override a more restrictive project-level use condition or grant rights to every checkpoint and dependency.
