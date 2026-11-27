@@ -76,3 +76,21 @@ class PrivateMediaService:
         except MediaStorageError as exc:
             raise MediaServiceError("Authorized media metadata exists but its file is unavailable.") from exc
         return record, data
+
+    def delete(self, *, media_id: str, actor_user_id: str) -> None:
+        """Hide media, delete bytes, then finalize metadata; failures remain retryable."""
+        record = self.repository.begin_media_deletion(
+            media_id=media_id, actor_user_id=actor_user_id
+        )
+        try:
+            self.storage.delete_image(record.media_id)
+        except MediaStorageError as exc:
+            raise MediaServiceError(
+                "Media is hidden but physical deletion failed; retry is required."
+            ) from exc
+        try:
+            self.repository.finalize_media_deletion(media_id=record.media_id)
+        except MediaRepositoryError as exc:
+            raise MediaServiceError(
+                "Media file is deleted but metadata cleanup is pending; retry is required."
+            ) from exc
