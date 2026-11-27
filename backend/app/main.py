@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.auth import Principal, issue_access_token, require_admin, require_customer
 from app.account_store import AccountStore, AccountStoreError
+from app.email_delivery import EmailDeliveryError, send_customer_verification_email
 from app.config import get_settings
 from app.engine import AnimationEngineUnavailable, EngineRegistry
 from app.engine_contract import EngineQualificationError
@@ -121,6 +123,57 @@ async def motion_diagnostics(
 
 
 
+class CustomerRegistrationRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=12, max_length=256)
+
+
+class EmailVerificationRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=256)
+
+
+@app.post("/auth/register", status_code=202, tags=["authentication"])
+async def register_customer(request: CustomerRegistrationRequest) -> dict[str, str]:
+    """Register a customer; admin accounts can only be provisioned by trusted operators."""
+    if not settings.smtp_host or not settings.smtp_from_email:
+        raise HTTPException(status_code=503, detail="Customer email verification is not configured.")
+    try:
+        store = AccountStore(settings.auth_database_path)
+        _, token = store.create_customer_registration(
+            email=request.email, password=request.password, lifetime_seconds=1800
+        )
+        base_url = settings.customer_frontend_url.rstrip("/")
+        verification_url = f"{base_url}/verify-email?token={quote(token, safe='')}"
+        send_customer_verification_email(
+            host=settings.smtp_host, port=settings.smtp_port,
+            username=settings.smtp_username, password=settings.smtp_password,
+            sender=settings.smtp_from_email, recipient=request.email.strip(),
+            verification_url=verification_url, use_starttls=settings.smtp_starttls,
+        )
+        return {"status": "verification_email_sent",
+                "message": "Check your email and open the verification link to activate your account."}
+    except AccountStoreError as exc:
+        if "already exists" in str(exc).lower():
+            raise HTTPException(status_code=409, detail="An account with this email already exists.") from exc
+        logger.exception("Customer registration storage failure.")
+        raise HTTPException(status_code=503, detail="Registration is temporarily unavailable.") from exc
+    except (EmailDeliveryError, OSError) as exc:
+        logger.exception("Customer verification email delivery failed.")
+        raise HTTPException(status_code=503, detail="Verification email could not be sent. Please try again later.") from exc
+
+
+@app.post("/auth/verify-email", tags=["authentication"])
+async def verify_customer_email(request: EmailVerificationRequest) -> dict[str, str]:
+    try:
+        verified = AccountStore(settings.auth_database_path).verify_customer_email(token=request.token)
+    except AccountStoreError as exc:
+        logger.exception("Customer email verification storage failure.")
+        raise HTTPException(status_code=503, detail="Email verification is temporarily unavailable.") from exc
+    if not verified:
+        raise HTTPException(status_code=400, detail="Verification link is invalid, expired or already used.")
+    return {"status": "email_verified", "message": "Your email is verified. You can now sign in."}
+
+
 class LoginRequest(BaseModel):
     email: str = Field(min_length=5, max_length=254)
     password: str = Field(min_length=1, max_length=256)
@@ -128,7 +181,7 @@ class LoginRequest(BaseModel):
 
 @app.post("/auth/login", tags=["authentication"])
 async def login(request: LoginRequest) -> dict[str, object]:
-    """Sign in only accounts provisioned and email-verified by trusted operators."""
+    """Sign in customers only after email verification; trusted admins are exempt."""
     try:
         account = AccountStore(settings.auth_database_path).authenticate(
             email=request.email, password=request.password
