@@ -10,6 +10,9 @@ from typing import Literal
 from pydantic import BaseModel, Field, ValidationError
 
 
+HASH_CHUNK_SIZE = 8 * 1024 * 1024
+
+
 class ModelManifest(BaseModel):
     model_id: str = Field(min_length=3, max_length=80, pattern=r"^[a-zA-Z0-9._-]+$")
     version: str = Field(min_length=1, max_length=40)
@@ -25,6 +28,18 @@ class ModelManifest(BaseModel):
 
 class ModelArtifactError(ValueError):
     """Raised when a local model artifact is missing or not qualified."""
+
+
+def _sha256_file(path: Path) -> str:
+    """Hash large model files incrementally instead of loading all weights into RAM."""
+    digest = sha256()
+    try:
+        with path.open("rb") as checkpoint_file:
+            for chunk in iter(lambda: checkpoint_file.read(HASH_CHUNK_SIZE), b""):
+                digest.update(chunk)
+    except OSError as exc:
+        raise ModelArtifactError(f"Could not read model checkpoint: {exc}") from exc
+    return digest.hexdigest()
 
 
 def verify_model_artifact(manifest_path: Path) -> ModelManifest:
@@ -46,7 +61,7 @@ def verify_model_artifact(manifest_path: Path) -> ModelManifest:
     if not checkpoint.is_file():
         raise ModelArtifactError("Model checkpoint file is missing.")
 
-    digest = sha256(checkpoint.read_bytes()).hexdigest()
+    digest = _sha256_file(checkpoint)
     if digest != manifest.checkpoint_sha256:
         raise ModelArtifactError("Model checkpoint SHA-256 does not match its manifest.")
     return manifest
