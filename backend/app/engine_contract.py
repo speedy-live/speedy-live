@@ -26,6 +26,7 @@ class EngineManifest(BaseModel):
     version: str = Field(min_length=1, max_length=80)
     supported_modes: tuple[EngineMode, ...] = Field(min_length=1)
     supports_streaming: bool
+    supports_audio_driven_portrait: bool = False
     checkpoint_sha256: str | None = None
     code_license: str = Field(min_length=1, max_length=120)
     weights_license: str = Field(min_length=1, max_length=120)
