@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -72,8 +73,9 @@ def test_customer_cannot_access_admin_api_and_admin_cannot_access_customer_api(m
     ))
     client = TestClient(app)
     assert client.get("/admin/security/overview").status_code == 401
-    customer = {"Authorization": f"Bearer {make_token('customer')}"}
-    admin = {"Authorization": f"Bearer {make_token('admin')}"}
+    current = int(time.time())
+    customer = {"Authorization": f"Bearer {make_token('customer', now=current, expires=current + 300)}"}
+    admin = {"Authorization": f"Bearer {make_token('admin', now=current, expires=current + 300)}"}
     assert client.get("/admin/security/overview", headers=customer).status_code == 403
     assert client.get("/customer/me", headers=admin).status_code == 403
     assert client.get("/admin/security/overview", headers=admin).json()["access"] == "administrator"
