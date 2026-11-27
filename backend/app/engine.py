@@ -12,6 +12,7 @@ from typing import AsyncIterator
 from app.engine_contract import EngineManifest, EngineQualificationError, require_engine_eligibility
 from app.model_manifest import ModelArtifactError, verify_model_artifact
 from app.schemas import GenerationRequest, MotionFrame
+from app.audio_contract import AudioChunk
 
 
 class AnimationEngineUnavailable(RuntimeError):
