@@ -53,6 +53,7 @@ def test_login_issues_role_scoped_token_only_for_verified_account(tmp_path, monk
     admin_id = store.create_account(email="admin@example.test", password="another secure password",
                                     role="admin", email_verified=True)
     settings = SimpleNamespace(
+        environment="development",
         auth_database_path=database,
         auth_signing_key="test-signing-key-that-is-at-least-32-bytes-long",
         auth_token_issuer="speedy-live-auth",
