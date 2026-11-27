@@ -10,10 +10,15 @@ type Landmark = {
 };
 
 type PoseMessage = {
-  landmarks: Landmark[];
-  yaw: number;
-  pitch: number;
-  roll: number;
+  timestampMs: number;
+  bodyLandmarks: Landmark[];
+  hands: Array<{ handedness: string; landmarks: Landmark[] }>;
+  face: {
+    yawDegrees: number;
+    pitchDegrees: number;
+    rollDegrees: number;
+    blendshapes: Record<string, number>;
+  };
 };
 
 type Props = {
@@ -125,7 +130,7 @@ export default function AvatarPreview({ mode, tracking }: Props) {
     }
 
     function updateAvatar(data: PoseMessage) {
-      const landmarks = data.landmarks;
+      const landmarks = data.bodyLandmarks;
       const getPoint = (index: number) => {
         const point = landmarks[index];
         if (!point || (point.visibility !== undefined && point.visibility < 0.35)) {
@@ -177,9 +182,9 @@ export default function AvatarPreview({ mode, tracking }: Props) {
         head.position.y += 0.25;
         const safeAngle = (value: number) => Number.isFinite(value) ? value : 0;
         head.rotation.set(
-          THREE.MathUtils.degToRad(safeAngle(data.pitch)),
-          THREE.MathUtils.degToRad(safeAngle(data.yaw)),
-          THREE.MathUtils.degToRad(safeAngle(data.roll))
+          THREE.MathUtils.degToRad(safeAngle(data.face.pitchDegrees)),
+          THREE.MathUtils.degToRad(safeAngle(data.face.yawDegrees)),
+          THREE.MathUtils.degToRad(safeAngle(data.face.rollDegrees))
         );
         head.visible = true;
       } else {
@@ -189,7 +194,14 @@ export default function AvatarPreview({ mode, tracking }: Props) {
 
     const handlePose = (event: Event) => {
       const customEvent = event as CustomEvent<PoseMessage>;
-      latestPose.current = customEvent.detail;
+      const detail = customEvent.detail;
+      if (
+        !detail ||
+        !Number.isFinite(detail.timestampMs) ||
+        !Array.isArray(detail.bodyLandmarks) ||
+        !detail.face
+      ) return;
+      latestPose.current = detail;
     };
 
     window.addEventListener("speedy-live-pose", handlePose);
@@ -220,18 +232,18 @@ export default function AvatarPreview({ mode, tracking }: Props) {
   return (
     <div className="avatar-preview-card">
       <div className="avatar-preview-heading">
-        <strong>3D AVATAR PREVIEW</strong>
+        <strong>3D TRACKING DIAGNOSTIC</strong>
         <span>{tracking ? "MOVEMENT LINK ACTIVE" : "WAITING FOR CAMERA"}</span>
       </div>
       <div className="avatar-preview-stage" ref={hostRef}>
         {!tracking && (
           <div className="avatar-preview-message">
-            Start camera tracking to animate the 3D figure.
+            Start camera tracking to view the diagnostic landmark rig.
           </div>
         )}
       </div>
       <p className="avatar-preview-note">
-        Basic 3D movement preview. Final avatar appearance and facial animation will be added in later stages.
+        Diagnostic landmark visualization only. This is not the uploaded-photo animation engine.
       </p>
     </div>
   );
