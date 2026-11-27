@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import AvatarPreview from "./AvatarPreview";
 import {
   FaceLandmarker,
   FilesetResolver,
@@ -420,15 +421,26 @@ export default function App() {
             const matrix =
               faceResult.facialTransformationMatrixes?.[0];
 
-            setHeadRotation(
-              readHeadRotation(matrix)
-            );
+            const rotation = readHeadRotation(matrix);
+
+            setHeadRotation(rotation);
 
             /*
              * Body landmark coordinates.
              */
             const landmarks =
               poseResult.landmarks?.[0] ?? [];
+
+            window.dispatchEvent(
+              new CustomEvent("speedy-live-pose", {
+                detail: {
+                  landmarks,
+                  yaw: Number.parseFloat(rotation.yaw),
+                  pitch: Number.parseFloat(rotation.pitch),
+                  roll: Number.parseFloat(rotation.roll)
+                }
+              })
+            );
 
             setPoseMetrics(
               POSE_NAMES.map((name, index) => {
@@ -808,6 +820,11 @@ export default function App() {
               {handsFound} hands detected
             </span>
           </div>
+
+          <AvatarPreview
+            mode={mode}
+            tracking={cameraOn && poseFound}
+          />
         </div>
 
         <div className="side-column">
