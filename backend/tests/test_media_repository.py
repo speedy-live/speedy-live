@@ -119,8 +119,16 @@ def test_delete_metadata_is_owner_only_and_removes_record(tmp_path):
     register(repo, record)
     with pytest.raises(MediaAccessDenied):
         repo.delete_media_record(media_id="a" * 32, actor_user_id="customer_0002")
-    removed = repo.delete_media_record(media_id="a" * 32, actor_user_id="customer_0001")
+    removed = repo.begin_media_deletion(media_id="a" * 32, actor_user_id="customer_0001")
     assert removed.media_id == "a" * 32
+    assert len(repo.list_pending_media_deletions()) == 1
+    with pytest.raises(MediaRepositoryError, match="not found"):
+        repo.get_authorized_media(
+            media_id="a" * 32,
+            actor_user_id="customer_0001",
+            purpose=ConsentPurpose.PHOTO_ANIMATION,
+        )
+    repo.finalize_media_deletion(media_id="a" * 32)
     with pytest.raises(MediaRepositoryError, match="not found"):
         repo.get_authorized_media(
             media_id="a" * 32, actor_user_id="customer_0001",
@@ -132,3 +140,27 @@ def test_database_directory_and_file_permissions_are_private(tmp_path):
     repo, _ = setup_repo(tmp_path)
     assert repo.database_path.parent.stat().st_mode & 0o777 == 0o700
     assert repo.database_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_pending_deletion_is_idempotent_and_requires_owner(tmp_path):
+    repo, record = setup_repo(tmp_path)
+    register(repo, record)
+    with pytest.raises(MediaAccessDenied):
+        repo.begin_media_deletion(media_id="a" * 32, actor_user_id="customer_0002")
+    first = repo.begin_media_deletion(media_id="a" * 32, actor_user_id="customer_0001")
+    second = repo.begin_media_deletion(media_id="a" * 32, actor_user_id="customer_0001")
+    assert first.media_id == second.media_id
+    assert len(repo.list_pending_media_deletions()) == 1
+
+
+def test_finalize_requires_a_pending_deletion(tmp_path):
+    repo, record = setup_repo(tmp_path)
+    register(repo, record)
+    with pytest.raises(MediaRepositoryError, match="Pending media deletion"):
+        repo.finalize_media_deletion(media_id="a" * 32)
+
+
+def test_deletion_batch_limit_is_validated(tmp_path):
+    repo, _ = setup_repo(tmp_path)
+    with pytest.raises(ValueError):
+        repo.list_pending_media_deletions(limit=0)
