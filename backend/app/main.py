@@ -21,6 +21,11 @@ backend_root = Path(__file__).resolve().parents[1]
 local_engine_root = backend_root / "local_engines"
 
 
+def customer_animation_is_enabled() -> bool:
+    """Require runtime health plus an explicit, auditable customer release approval."""
+    return engine_registry.operational and settings.customer_release_approved
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     adapter_path = settings.animation_engine_adapter_path.strip()
@@ -40,6 +45,11 @@ async def lifespan(_: FastAPI):
             engine_registry.clear()
     else:
         logger.info("No local animation engine configured; photo animation remains unavailable.")
+    if engine_registry.operational and not settings.customer_release_approved:
+        logger.warning(
+            "Local engine passed runtime checks but customer release is disabled: "
+            "an explicit approval flag and approval ID are required."
+        )
     try:
         yield
     finally:
@@ -67,17 +77,20 @@ async def health() -> dict[str, str]:
 async def readiness() -> dict[str, object]:
     engine = engine_registry.status()
     operational = bool(engine["operational"])
+    customer_enabled = customer_animation_is_enabled()
     return {
-        "status": "ready" if operational else "not_ready",
+        "status": "ready" if customer_enabled else "not_ready",
         "service_alive": True,
         "animation_engine_configured": bool(engine["configured"]),
         "runtime_health_check_passed": bool(engine["runtime_healthy"]),
-        "customer_animation_enabled": operational,
+        "customer_release_approved": settings.customer_release_approved,
+        "customer_animation_enabled": customer_enabled,
         "engine": engine,
         "message": (
-            "The local animation engine passed its runtime self-test."
-            if operational else
-            "The service is alive, but no operational animation engine has passed runtime qualification."
+            "The local animation engine is approved for customer use."
+            if customer_enabled else
+            "The service is alive, but customer animation is disabled until runtime checks "
+            "and explicit release approval both pass."
         ),
     }
 
@@ -102,13 +115,25 @@ async def motion_diagnostics(
 
 @app.get("/engine/status", tags=["engine"])
 async def engine_status() -> dict[str, object]:
-    return engine_registry.status()
+    status = engine_registry.status()
+    status["customer_release_approved"] = settings.customer_release_approved
+    status["customer_animation_enabled"] = customer_animation_is_enabled()
+    if status["operational"] and not settings.customer_release_approved:
+        status["message"] = (
+            "Runtime checks passed, but customer use remains disabled pending explicit release approval."
+        )
+    return status
 
 
 @app.get("/engine/capabilities/{mode}", tags=["engine"])
 async def engine_capabilities(mode: str) -> dict[str, object]:
     if mode not in {"portrait", "full_body"}:
         raise HTTPException(status_code=422, detail="Mode must be portrait or full_body.")
+    if not customer_animation_is_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Customer animation is disabled until runtime qualification and explicit release approval pass.",
+        )
     try:
         engine = engine_registry.get(mode, live=(mode == "portrait"))
     except AnimationEngineUnavailable as exc:
