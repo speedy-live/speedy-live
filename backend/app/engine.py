@@ -41,6 +41,16 @@ class AnimationEngine(ABC):
                                    motion: AsyncIterator[MotionFrame]) -> AsyncIterator[bytes]:
         raise NotImplementedError
 
+    async def generate_audio_driven_frames(
+        self, source_image: Path, speech_audio: AsyncIterator[AudioChunk],
+        listening_audio: AsyncIterator[AudioChunk] | None = None,
+    ) -> AsyncIterator[bytes]:
+        """Optional audio-driven portrait stream; adapters must implement real inference."""
+        raise AnimationEngineUnavailable(
+            "The registered engine does not implement audio-driven portrait generation."
+        )
+        yield b""
+
 
 class UnconfiguredAnimationEngine(AnimationEngine):
     name = "unconfigured"
@@ -121,7 +131,7 @@ class EngineRegistry:
             return {
                 "configured": False, "runtime_healthy": False, "operational": False,
                 "engine_id": "unconfigured", "version": None, "supported_modes": [],
-                "supports_streaming": False, "commercial_rights_verified": False,
+                "supports_streaming": False, "supports_audio_driven_portrait": False, "commercial_rights_verified": False,
                 "runtime_error": self._runtime_error,
                 "message": "No qualified local animation engine is registered.",
             }
@@ -132,6 +142,7 @@ class EngineRegistry:
             "version": self._manifest.version,
             "supported_modes": list(self._manifest.supported_modes),
             "supports_streaming": self._manifest.supports_streaming,
+            "supports_audio_driven_portrait": self._manifest.supports_audio_driven_portrait,
             "commercial_rights_verified": self._manifest.rights_review_complete,
             "runtime_error": self._runtime_error,
             "message": (
@@ -141,7 +152,7 @@ class EngineRegistry:
             ),
         }
 
-    def get(self, mode: str, *, live: bool = False) -> AnimationEngine:
+    def get(self, mode: str, *, live: bool = False, audio_driven: bool = False) -> AnimationEngine:
         if not self.configured or self._engine is None or self._manifest is None:
             raise AnimationEngineUnavailable("No qualified local animation engine is registered.")
         if not self.operational:
@@ -149,4 +160,10 @@ class EngineRegistry:
         require_engine_eligibility(self._manifest, mode, require_commercial_rights=True)
         if live and not self._manifest.supports_streaming:
             raise AnimationEngineUnavailable("The registered engine does not support live streaming.")
+        if audio_driven and mode != "portrait":
+            raise AnimationEngineUnavailable("Audio-driven generation is available only for portrait mode.")
+        if audio_driven and not self._manifest.supports_audio_driven_portrait:
+            raise AnimationEngineUnavailable(
+                "The registered engine does not declare audio-driven portrait capability."
+            )
         return self._engine
