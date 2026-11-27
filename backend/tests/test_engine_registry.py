@@ -1,15 +1,45 @@
 import asyncio
+import base64
+import hmac
+import time
 import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app import auth
 from app.engine import AnimationEngine, AnimationEngineUnavailable, EngineRegistry
 from app.engine_contract import EngineManifest, EngineQualificationError
 from app.main import app
 
 client = TestClient(app)
+
+AUTH_KEY = "test-signing-key-that-is-at-least-32-bytes-long"
+
+
+def api_headers(role="customer"):
+    def enc(value):
+        return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
+    now = int(time.time())
+    header = enc(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    claims = enc(json.dumps({
+        "sub": "engine-test-user", "role": role, "iss": "speedy-live-auth",
+        "aud": "speedy-live-api", "iat": now, "exp": now + 300,
+    }).encode())
+    signature = hmac.new(AUTH_KEY.encode(), f"{header}.{claims}".encode(), "sha256").digest()
+    token = f"{header}.{claims}.{enc(signature)}"
+    return {"Authorization": f"Bearer {token}"}
+
+
+def configure_api_auth(monkeypatch):
+    monkeypatch.setattr(auth, "get_settings", lambda: SimpleNamespace(
+        auth_signing_key=AUTH_KEY,
+        auth_token_issuer="speedy-live-auth",
+        auth_token_audience="speedy-live-api",
+    ))
+
 
 
 class LocalStubEngine(AnimationEngine):
@@ -125,18 +155,22 @@ def test_runtime_health_failure_keeps_engine_unavailable(tmp_path):
         registry.get("full_body")
 
 
-def test_api_reports_engine_unconfigured():
-    assert client.get("/engine/status").json()["configured"] is False
+def test_api_reports_engine_unconfigured(monkeypatch):
+    configure_api_auth(monkeypatch)
+    assert client.get("/engine/status").status_code == 401
+    assert client.get("/engine/status", headers=api_headers("admin")).json()["configured"] is False
     assert client.get("/ready").json()["status"] == "not_ready"
     assert client.get("/ready").json()["customer_animation_enabled"] is False
 
 
-def test_api_rejects_unknown_mode():
-    assert client.get("/engine/capabilities/unknown").status_code == 422
+def test_api_rejects_unknown_mode(monkeypatch):
+    configure_api_auth(monkeypatch)
+    assert client.get("/engine/capabilities/unknown", headers=api_headers()).status_code == 422
 
 
-def test_api_returns_503_without_registered_engine():
-    response = client.get("/engine/capabilities/full_body")
+def test_api_returns_503_without_registered_engine(monkeypatch):
+    configure_api_auth(monkeypatch)
+    response = client.get("/engine/capabilities/full_body", headers=api_headers())
     assert response.status_code == 503
 
 
