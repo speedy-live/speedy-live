@@ -5,6 +5,27 @@ from app import auth, main
 from app.account_store import AccountStore, AccountStoreError
 
 
+def test_customer_verification_token_is_single_use_and_activates_account(tmp_path):
+    store = AccountStore(str(tmp_path / "accounts.sqlite3"))
+    user_id, token = store.create_customer_registration(
+        email="new-customer@example.test", password="correct horse battery"
+    )
+    assert store.authenticate(email="new-customer@example.test",
+                              password="correct horse battery") is None
+    assert store.verify_customer_email(token=token) is True
+    assert store.verify_customer_email(token=token) is False
+    identity = store.authenticate(email="new-customer@example.test",
+                                  password="correct horse battery")
+    assert identity == {"user_id": user_id, "role": "customer",
+                        "email": "new-customer@example.test"}
+    assert store.identity_is_active(user_id=user_id, role="customer")
+
+
+def test_customer_verification_rejects_unknown_token(tmp_path):
+    store = AccountStore(str(tmp_path / "accounts.sqlite3"))
+    assert store.verify_customer_email(token="x" * 40) is False
+
+
 def test_account_authentication_requires_verified_email(tmp_path):
     store = AccountStore(str(tmp_path / "accounts.sqlite3"))
     store.create_account(email="customer@example.test", password="correct horse battery", role="customer")
