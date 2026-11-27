@@ -16,6 +16,13 @@ from app.main import app
 
 client = TestClient(app)
 
+class _ActiveAccountStore:
+    def __init__(self, _path):
+        pass
+    def identity_is_active(self, *, user_id, role):
+        return True
+
+
 AUTH_KEY = "test-signing-key-that-is-at-least-32-bytes-long"
 
 
@@ -34,6 +41,7 @@ def api_headers(role="customer"):
 
 
 def configure_api_auth(monkeypatch):
+    monkeypatch.setattr(auth, "AccountStore", _ActiveAccountStore)
     monkeypatch.setattr(auth, "get_settings", lambda: SimpleNamespace(
         auth_signing_key=AUTH_KEY,
         auth_token_issuer="speedy-live-auth",
