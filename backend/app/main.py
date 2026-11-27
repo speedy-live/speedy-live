@@ -162,8 +162,12 @@ async def register_customer(request: CustomerRegistrationRequest) -> dict[str, s
         raise HTTPException(status_code=503, detail="Verification email could not be sent. Please try again later.") from exc
 
 
+class VerificationResendRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+
+
 @app.post("/auth/resend-verification", status_code=202, tags=["authentication"])
-async def resend_customer_verification(request: LoginRequest) -> dict[str, str]:
+async def resend_customer_verification(request: VerificationResendRequest) -> dict[str, str]:
     """Resend a customer verification link without revealing whether an email exists."""
     if not settings.smtp_host or not settings.smtp_from_email:
         raise HTTPException(status_code=503, detail="Customer email verification is not configured.")
