@@ -9,8 +9,6 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import json
-import os
 from pathlib import Path
 import sqlite3
 from collections.abc import Iterator
@@ -71,12 +69,20 @@ class SQLiteMediaRepository:
                         width INTEGER NOT NULL CHECK(width > 0),
                         height INTEGER NOT NULL CHECK(height > 0),
                         byte_count INTEGER NOT NULL CHECK(byte_count > 0),
-                        created_at TEXT NOT NULL
+                        created_at TEXT NOT NULL,
+                        deletion_requested_at TEXT
                     );
                     CREATE INDEX IF NOT EXISTS idx_media_owner
                         ON media_records(owner_user_id, created_at);
                     """
                 )
+                media_columns = {
+                    row["name"] for row in connection.execute("PRAGMA table_info(media_records)")
+                }
+                if "deletion_requested_at" not in media_columns:
+                    connection.execute(
+                        "ALTER TABLE media_records ADD COLUMN deletion_requested_at TEXT"
+                    )
             if self.database_path.exists():
                 self.database_path.chmod(0o600)
         except (OSError, sqlite3.Error) as exc:
@@ -211,7 +217,7 @@ class SQLiteMediaRepository:
                     JOIN consent_records c ON c.consent_record_id = m.consent_record_id
                     LEFT JOIN consent_revocations r
                       ON r.consent_record_id = m.consent_record_id
-                    WHERE m.media_id = ?""",
+                    WHERE m.media_id = ? AND m.deletion_requested_at IS NULL""",
                     (media_id,),
                 ).fetchone()
         except sqlite3.Error as exc:
@@ -242,8 +248,20 @@ class SQLiteMediaRepository:
             created_at=datetime.fromisoformat(row["created_at"]),
         )
 
-    def delete_media_record(self, *, media_id: str, actor_user_id: str) -> MediaRecord:
-        """Delete metadata for its owner; caller must delete the private file as well."""
+    @staticmethod
+    def _record_from_row(row: sqlite3.Row) -> MediaRecord:
+        return MediaRecord(
+            media_id=row["media_id"], owner_user_id=row["owner_user_id"],
+            consent_record_id=row["consent_record_id"], format=row["format"],
+            content_type=row["content_type"], width=row["width"],
+            height=row["height"], byte_count=row["byte_count"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
+    def begin_media_deletion(self, *, media_id: str, actor_user_id: str) -> MediaRecord:
+        """Hide media immediately and persist a retryable deletion tombstone."""
+        if not actor_user_id:
+            raise MediaAccessDenied("A verified signed-in user is required.")
         try:
             with self._connect() as connection:
                 row = connection.execute(
@@ -251,17 +269,46 @@ class SQLiteMediaRepository:
                 ).fetchone()
                 if row is None:
                     raise MediaRepositoryError("Media record was not found.")
-                if not actor_user_id or row["owner_user_id"] != actor_user_id:
+                if row["owner_user_id"] != actor_user_id:
                     raise MediaAccessDenied("The signed-in user does not own this media asset.")
-                connection.execute("DELETE FROM media_records WHERE media_id = ?", (media_id,))
-                return MediaRecord(
-                    media_id=row["media_id"], owner_user_id=row["owner_user_id"],
-                    consent_record_id=row["consent_record_id"], format=row["format"],
-                    content_type=row["content_type"], width=row["width"],
-                    height=row["height"], byte_count=row["byte_count"],
-                    created_at=datetime.fromisoformat(row["created_at"]),
-                )
+                if row["deletion_requested_at"] is None:
+                    connection.execute(
+                        "UPDATE media_records SET deletion_requested_at = ? WHERE media_id = ?",
+                        (self._utc_now().isoformat(), media_id),
+                    )
+                return self._record_from_row(row)
         except (MediaRepositoryError, MediaAccessDenied):
             raise
         except sqlite3.Error as exc:
-            raise MediaRepositoryError("Could not delete media metadata.") from exc
+            raise MediaRepositoryError("Could not mark media for deletion.") from exc
+
+    def finalize_media_deletion(self, *, media_id: str) -> None:
+        """Remove a tombstoned metadata record after its private file is deleted."""
+        try:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    "DELETE FROM media_records WHERE media_id = ? AND deletion_requested_at IS NOT NULL",
+                    (media_id,),
+                )
+                if cursor.rowcount == 0:
+                    raise MediaRepositoryError("Pending media deletion was not found.")
+        except MediaRepositoryError:
+            raise
+        except sqlite3.Error as exc:
+            raise MediaRepositoryError("Could not finalize media deletion.") from exc
+
+    def list_pending_media_deletions(self, *, limit: int = 100) -> list[MediaRecord]:
+        """Return tombstones for a retry worker; callers must restrict operational access."""
+        if not 1 <= limit <= 1000:
+            raise ValueError("Deletion batch limit must be between 1 and 1000.")
+        try:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """SELECT * FROM media_records
+                    WHERE deletion_requested_at IS NOT NULL
+                    ORDER BY deletion_requested_at LIMIT ?""",
+                    (limit,),
+                ).fetchall()
+                return [self._record_from_row(row) for row in rows]
+        except sqlite3.Error as exc:
+            raise MediaRepositoryError("Could not list pending media deletions.") from exc
