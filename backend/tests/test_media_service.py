@@ -6,7 +6,7 @@ from app.consent import ConsentPurpose, ConsentRecord
 from app.media_access import MediaAccessDenied
 from app.media_repository import MediaRepositoryError, SQLiteMediaRepository
 from app.media_service import MediaServiceError, PrivateMediaService
-from app.media_storage import PrivateLocalMediaStore
+from app.media_storage import MediaStorageError, PrivateLocalMediaStore
 from PIL import Image
 from io import BytesIO
 
