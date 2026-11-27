@@ -12,8 +12,9 @@ import os
 from pathlib import Path
 import re
 import secrets
+import stat
 
-from app.media_validation import ValidatedImage, validate_image_bytes
+from app.media_validation import MAX_IMAGE_BYTES, ValidatedImage, validate_image_bytes
 
 
 _ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
@@ -83,6 +84,12 @@ class PrivateLocalMediaStore:
                 os.fsync(stream.fileno())
             os.replace(temporary, destination)
             destination.chmod(0o600)
+            # Persist the directory entry as well as file contents where supported.
+            directory_fd = os.open(self.root, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
         except OSError as exc:
             if fd is not None:
                 os.close(fd)
@@ -103,17 +110,26 @@ class PrivateLocalMediaStore:
 
     def read_image(self, media_id: str) -> bytes:
         path = self._path_for(media_id)
-        if path.is_symlink() or not path.is_file():
-            raise MediaStorageError("Media file was not found.")
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
         try:
-            resolved = path.resolve(strict=True)
-            if resolved.parent != self.root:
-                raise MediaStorageError("Media file escaped the private storage directory.")
-            data = resolved.read_bytes()
+            fd = os.open(path, flags)
+            with os.fdopen(fd, "rb") as stream:
+                metadata = os.fstat(stream.fileno())
+                if not stat.S_ISREG(metadata.st_mode):
+                    raise MediaStorageError("Stored media is not a regular file.")
+                if metadata.st_size > MAX_IMAGE_BYTES:
+                    raise MediaStorageError("Stored media exceeds the configured size limit.")
+                data = stream.read(MAX_IMAGE_BYTES + 1)
+            if len(data) > MAX_IMAGE_BYTES:
+                raise MediaStorageError("Stored media exceeds the configured size limit.")
             validate_image_bytes(data)
             return data
+        except FileNotFoundError as exc:
+            raise MediaStorageError("Media file was not found.") from exc
         except OSError as exc:
-            raise MediaStorageError("Could not read private media file.") from exc
+            raise MediaStorageError("Could not safely read private media file.") from exc
 
     def delete_image(self, media_id: str) -> bool:
         path = self._path_for(media_id)
@@ -123,6 +139,11 @@ class PrivateLocalMediaStore:
             return False
         try:
             path.unlink()
+            directory_fd = os.open(self.root, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
             return True
         except OSError as exc:
             raise MediaStorageError("Could not delete private media file.") from exc
