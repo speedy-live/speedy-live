@@ -432,13 +432,40 @@ export default function App() {
             const landmarks =
               poseResult.landmarks?.[0] ?? [];
 
+            const toSerializablePoints = (points: any[] = []) =>
+              points.map((point) => ({
+                x: point.x,
+                y: point.y,
+                z: point.z ?? 0,
+                visibility: point.visibility ?? null
+              }));
+
+            const hands = (handResult.landmarks ?? []).map(
+              (points: any[], index: number) => ({
+                handedness:
+                  handResult.handednesses?.[index]?.[0]?.categoryName ??
+                  (index === 0 ? "unknown-1" : "unknown-2"),
+                landmarks: toSerializablePoints(points)
+              })
+            );
+
             window.dispatchEvent(
               new CustomEvent("speedy-live-pose", {
                 detail: {
-                  landmarks,
-                  yaw: Number.parseFloat(rotation.yaw),
-                  pitch: Number.parseFloat(rotation.pitch),
-                  roll: Number.parseFloat(rotation.roll)
+                  timestampMs: Math.round(now),
+                  bodyLandmarks: toSerializablePoints(landmarks),
+                  hands,
+                  face: {
+                    yawDegrees: Number.parseFloat(rotation.yaw) || 0,
+                    pitchDegrees: Number.parseFloat(rotation.pitch) || 0,
+                    rollDegrees: Number.parseFloat(rotation.roll) || 0,
+                    blendshapes: Object.fromEntries(
+                      (faceCategories ?? []).map((item: any) => [
+                        item.categoryName,
+                        item.score
+                      ])
+                    )
+                  }
                 }
               })
             );
