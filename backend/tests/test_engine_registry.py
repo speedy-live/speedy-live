@@ -40,13 +40,13 @@ def manifest(**overrides):
     return EngineManifest(**values)
 
 
-def artifact_manifest(tmp_path, *, commercial=True, consent=True):
+def artifact_manifest(tmp_path, *, commercial=True, consent=True, task="full_body_animation"):
     checkpoint = tmp_path / "weights.bin"
     checkpoint.write_bytes(b"synthetic-test-checkpoint")
     digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
     data = {
         "model_id": "local-test-engine", "version": "0.1.0",
-        "task": "full_body_animation", "checkpoint_file": "weights.bin",
+        "task": task, "checkpoint_file": "weights.bin",
         "checkpoint_sha256": digest, "architecture": "synthetic-test-only",
         "input_contract": "speedy_motion_v1", "output_contract": "rgb_frames_v1",
         "commercial_use_allowed": commercial, "training_data_consent_verified": consent,
@@ -138,3 +138,49 @@ def test_api_rejects_unknown_mode():
 def test_api_returns_503_without_registered_engine():
     response = client.get("/engine/capabilities/full_body")
     assert response.status_code == 503
+
+
+
+def test_registry_requires_explicit_audio_driven_portrait_capability(tmp_path):
+    path, digest = artifact_manifest(tmp_path, task="portrait_animation")
+    registry = EngineRegistry()
+    registry.register(
+        LocalStubEngine(),
+        manifest(
+            supported_modes=["portrait"],
+            supports_streaming=True,
+            checkpoint_sha256=digest,
+            supports_audio_driven_portrait=False,
+        ),
+        path,
+    )
+    assert asyncio.run(registry.check_runtime()) is True
+    with pytest.raises(AnimationEngineUnavailable, match="audio-driven portrait capability"):
+        registry.get("portrait", live=True, audio_driven=True)
+
+
+def test_registry_allows_audio_driven_portrait_only_when_declared(tmp_path):
+    path, digest = artifact_manifest(tmp_path, task="portrait_animation")
+    registry = EngineRegistry()
+    engine = LocalStubEngine()
+    registry.register(
+        engine,
+        manifest(
+            supported_modes=["portrait"],
+            supports_streaming=True,
+            checkpoint_sha256=digest,
+            supports_audio_driven_portrait=True,
+        ),
+        path,
+    )
+    assert asyncio.run(registry.check_runtime()) is True
+    assert registry.get("portrait", live=True, audio_driven=True) is engine
+
+
+def test_audio_driven_generation_cannot_be_requested_for_full_body(tmp_path):
+    path, digest = artifact_manifest(tmp_path)
+    registry = EngineRegistry()
+    registry.register(LocalStubEngine(), manifest(checkpoint_sha256=digest), path)
+    assert asyncio.run(registry.check_runtime()) is True
+    with pytest.raises(AnimationEngineUnavailable, match="only for portrait"):
+        registry.get("full_body", audio_driven=True)
