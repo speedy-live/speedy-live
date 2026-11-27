@@ -3,10 +3,11 @@ import logging
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import Field
 
+from app.auth import Principal, require_admin, require_customer
 from app.config import get_settings
 from app.engine import AnimationEngineUnavailable, EngineRegistry
 from app.engine_contract import EngineQualificationError
@@ -32,10 +33,8 @@ async def lifespan(_: FastAPI):
     artifact_path = settings.animation_model_manifest_path.strip()
     if settings.animation_engine != "unconfigured" and adapter_path and artifact_path:
         try:
-            load_local_engine(
-                engine_registry, Path(adapter_path), Path(artifact_path),
-                allowed_root=local_engine_root,
-            )
+            load_local_engine(engine_registry, Path(adapter_path), Path(artifact_path),
+                              allowed_root=local_engine_root)
             if not await engine_registry.check_runtime():
                 logger.error("Local animation engine failed runtime qualification: %s",
                              engine_registry.status().get("runtime_error"))
@@ -46,10 +45,8 @@ async def lifespan(_: FastAPI):
     else:
         logger.info("No local animation engine configured; photo animation remains unavailable.")
     if engine_registry.operational and not settings.customer_release_approved:
-        logger.warning(
-            "Local engine passed runtime checks but customer release is disabled: "
-            "an explicit approval flag and approval ID are required."
-        )
+        logger.warning("Local engine passed runtime checks but customer release is disabled: "
+                       "an explicit approval flag and approval ID are required.")
     try:
         yield
     finally:
@@ -57,7 +54,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(
-    title=settings.service_name, version="0.5.0", lifespan=lifespan,
+    title=settings.service_name, version="0.6.0", lifespan=lifespan,
     docs_url="/docs" if settings.environment != "production" else None,
     redoc_url=None,
     openapi_url="/openapi.json" if settings.environment != "production" else None,
@@ -70,7 +67,6 @@ app.add_middleware(
 
 @app.middleware("http")
 async def add_security_headers(request, call_next):
-    """Apply baseline browser security headers to every API response."""
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -90,7 +86,6 @@ async def health() -> dict[str, str]:
 @app.get("/ready", tags=["operations"])
 async def readiness() -> dict[str, object]:
     engine = engine_registry.status()
-    operational = bool(engine["operational"])
     customer_enabled = customer_animation_is_enabled()
     return {
         "status": "ready" if customer_enabled else "not_ready",
@@ -100,12 +95,10 @@ async def readiness() -> dict[str, object]:
         "customer_release_approved": settings.customer_release_approved,
         "customer_animation_enabled": customer_enabled,
         "engine": engine,
-        "message": (
-            "The local animation engine is approved for customer use."
-            if customer_enabled else
-            "The service is alive, but customer animation is disabled until runtime checks "
-            "and explicit release approval both pass."
-        ),
+        "message": ("The local animation engine is approved for customer use."
+                    if customer_enabled else
+                    "The service is alive, but customer animation is disabled until runtime checks "
+                    "and explicit release approval both pass."),
     }
 
 
@@ -127,8 +120,22 @@ async def motion_diagnostics(
     }
 
 
+@app.get("/customer/me", tags=["customer"])
+async def customer_me(principal: Annotated[Principal, Depends(require_customer)]) -> dict[str, str]:
+    return {"user_id": principal.user_id, "role": "customer"}
+
+
+@app.get("/admin/security/overview", tags=["admin"])
+async def admin_security_overview(
+    principal: Annotated[Principal, Depends(require_admin)],
+) -> dict[str, str]:
+    return {"admin_user_id": principal.user_id, "access": "administrator"}
+
+
 @app.get("/engine/status", tags=["engine"])
-async def engine_status() -> dict[str, object]:
+async def engine_status(
+    _: Annotated[Principal, Depends(require_admin)],
+) -> dict[str, object]:
     status = engine_registry.status()
     status["customer_release_approved"] = settings.customer_release_approved
     status["customer_animation_enabled"] = customer_animation_is_enabled()
@@ -140,7 +147,9 @@ async def engine_status() -> dict[str, object]:
 
 
 @app.get("/engine/capabilities/{mode}", tags=["engine"])
-async def engine_capabilities(mode: str) -> dict[str, object]:
+async def engine_capabilities(
+    mode: str, _: Annotated[Principal, Depends(require_customer)],
+) -> dict[str, object]:
     if mode not in {"portrait", "full_body"}:
         raise HTTPException(status_code=422, detail="Mode must be portrait or full_body.")
     if not customer_animation_is_enabled():
@@ -156,10 +165,7 @@ async def engine_capabilities(mode: str) -> dict[str, object]:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     engine_status = engine_registry.status()
     return {
-        "available": True,
-        "engine": engine.name,
-        "version": engine.version,
-        "mode": mode,
+        "available": True, "engine": engine.name, "version": engine.version, "mode": mode,
         "supports_audio_driven_portrait": bool(
             engine_status.get("supports_audio_driven_portrait", False)
         ),
