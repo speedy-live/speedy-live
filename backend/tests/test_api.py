@@ -49,7 +49,7 @@ def test_motion_diagnostics_rejects_duplicate_timestamps() -> None:
     frame = {"sequence": 0, "timestamp_ms": 12, "body_landmarks": []}
     response = client.post("/motion/diagnostics", json=[frame, frame])
     assert response.status_code == 422
-    assert "timestamps" in response.json()["detail"]
+    assert "sequence" in response.json()["detail"]
 
 
 def test_motion_diagnostics_rejects_oversized_batch() -> None:
