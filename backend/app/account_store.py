@@ -28,6 +28,10 @@ class AccountStore:
                     email_verified INTEGER NOT NULL DEFAULT 0,
                     disabled INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+                # Email verification is a CUSTOMER requirement only. Admin identities
+                # are trusted, operator-provisioned accounts and must not be blocked
+                # by the customer email-verification workflow.
+                db.execute("UPDATE accounts SET email_verified=1 WHERE role='admin'")
             self.path.chmod(0o600)
         except (OSError, sqlite3.Error) as exc:
             raise AccountStoreError("Could not initialize private account database.") from exc
@@ -51,6 +55,10 @@ class AccountStore:
         if not _EMAIL.fullmatch(email) or len(email)>254: raise ValueError("Invalid email address.")
         if len(password)<12 or len(password)>256: raise ValueError("Password must contain 12 to 256 characters.")
         if role not in {"customer","admin"}: raise ValueError("Invalid role.")
+        # Admins are created only by trusted provisioning, so customer email
+        # verification does not apply to them.
+        if role == "admin":
+            email_verified = True
         salt=secrets.token_bytes(16); digest=self._hash(password,salt); user_id=secrets.token_hex(16)
         try:
             with self._connect() as db:
@@ -69,7 +77,8 @@ class AccountStore:
             self._hash(password,b"speedy-live-dummy")
             return None
         candidate=self._hash(password,row["password_salt"],row["password_iterations"])
-        if not hmac.compare_digest(candidate,row["password_hash"]) or row["disabled"] or not row["email_verified"]:
+        if (not hmac.compare_digest(candidate,row["password_hash"]) or row["disabled"]
+                or (row["role"] == "customer" and not row["email_verified"])):
             return None
         return {"user_id":row["user_id"],"role":row["role"],"email":row["email"]}
 
@@ -77,5 +86,6 @@ class AccountStore:
         try:
             with self._connect() as db:
                 row=db.execute("SELECT role,disabled,email_verified FROM accounts WHERE user_id=?",(user_id,)).fetchone()
-            return bool(row and row["role"]==role and not row["disabled"] and row["email_verified"])
+            return bool(row and row["role"]==role and not row["disabled"]
+                        and (role == "admin" or row["email_verified"]))
         except sqlite3.Error as exc: raise AccountStoreError("Could not verify account status.") from exc
