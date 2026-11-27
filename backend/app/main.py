@@ -4,9 +4,8 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
-from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.auth import Principal, issue_access_token, require_admin, require_customer
 from app.account_store import AccountStore, AccountStoreError
@@ -120,6 +119,47 @@ async def motion_diagnostics(
         "face_sample_count": result.face_sample_count,
     }
 
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=1, max_length=256)
+
+
+@app.post("/auth/login", tags=["authentication"])
+async def login(request: LoginRequest) -> dict[str, object]:
+    """Sign in only accounts provisioned and email-verified by trusted operators."""
+    try:
+        account = AccountStore(settings.auth_database_path).authenticate(
+            email=request.email, password=request.password
+        )
+        if account is None:
+            raise HTTPException(status_code=401, detail="Email or password is incorrect.")
+        token = issue_access_token(
+            user_id=account["user_id"], email=account["email"], role=account["role"],
+            signing_key=settings.auth_signing_key, issuer=settings.auth_token_issuer,
+            audience=settings.auth_token_audience, lifetime_seconds=900,
+        )
+        return {
+            "access_token": token, "token_type": "bearer", "expires_in": 900,
+            "user": {"id": account["user_id"], "email": account["email"],
+                     "role": account["role"]},
+        }
+    except AccountStoreError as exc:
+        logger.exception("Account database failure during sign-in.")
+        raise HTTPException(status_code=503, detail="Sign-in is temporarily unavailable.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail="Authentication is not configured securely.") from exc
+
+
+@app.get("/auth/me", tags=["authentication"])
+async def auth_me(principal: Annotated[Principal, Depends(require_customer)]):
+    return {"id": principal.user_id, "email": principal.email, "role": principal.role}
+
+
+@app.get("/admin/auth/me", tags=["authentication"])
+async def admin_auth_me(principal: Annotated[Principal, Depends(require_admin)]):
+    return {"id": principal.user_id, "email": principal.email, "role": principal.role}
 
 @app.get("/customer/me", tags=["customer"])
 async def customer_me(principal: Annotated[Principal, Depends(require_customer)]) -> dict[str, str]:
