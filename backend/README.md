@@ -47,3 +47,10 @@ Before enabling customer uploads, implement authenticated upload authorization, 
 6. **Production hardening:** authentication, quotas, monitoring, autoscaling, security and load testing.
 
 A healthy API process does not mean photo animation works.
+## Website-to-backend connection
+
+The Vite website can read `GET /ready` and submit an explicitly requested motion-only diagnostic to `POST /motion/diagnostics`. This diagnostic accepts up to 3,000 timestamped landmark samples and returns capture-quality measurements; it does not upload a photograph or video, save customer media, or run animation inference.
+
+For local development, run the API at `http://localhost:8000` and set the frontend environment variable `VITE_API_BASE_URL=http://localhost:8000` before building the Vite app. Set the backend `ALLOWED_ORIGINS` to the exact website origin (scheme and hostname, no path), for example `http://localhost:5173`. For a deployed frontend, configure its build environment with the separately deployed API base URL, and configure the API's `ALLOWED_ORIGINS` with that deployed frontend origin. Do not put backend secrets in Vite variables; Vite variables are public in the browser bundle.
+
+If `VITE_API_BASE_URL` is omitted, the website uses its own origin and therefore requires the API to be reverse-proxied under that same origin. A static Pages deployment alone does not host this FastAPI service.
