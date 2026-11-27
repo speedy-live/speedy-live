@@ -77,7 +77,8 @@ def test_short_signing_key_is_rejected():
 def test_customer_cannot_access_admin_api_and_admin_cannot_access_customer_api(monkeypatch):
     monkeypatch.setattr(auth, "AccountStore", _ActiveAccountStore)
     monkeypatch.setattr(auth, "get_settings", lambda: SimpleNamespace(
-        auth_signing_key=KEY, auth_token_issuer=ISSUER, auth_token_audience=AUDIENCE
+        auth_signing_key=KEY, auth_token_issuer=ISSUER, auth_token_audience=AUDIENCE,
+        auth_database_path="unused-test-db"
     ))
     client = TestClient(app)
     assert client.get("/admin/security/overview").status_code == 401
