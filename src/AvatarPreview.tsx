@@ -49,8 +49,9 @@ export default function AvatarPreview({ mode, tracking }: Props) {
   const latestPose = useRef<PoseMessage | null>(null);
 
   useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
+    const hostElement = hostRef.current;
+    if (!hostElement) return;
+    const host: HTMLDivElement = hostElement;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#081426");
