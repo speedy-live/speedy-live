@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -19,7 +20,7 @@ def _token(role="customer"):
     header = enc(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
     claims = enc(json.dumps({
         "sub": "test-user", "role": role, "iss": "speedy-live-auth",
-        "aud": "speedy-live-api", "iat": 2_000_000_000, "exp": 2_000_000_300,
+        "aud": "speedy-live-api", "iat": int(time.time()), "exp": int(time.time()) + 300,
     }).encode())
     signature = hmac.new(TEST_KEY.encode(), f"{header}.{claims}".encode(), hashlib.sha256).digest()
     return f"{header}.{claims}.{enc(signature)}"
