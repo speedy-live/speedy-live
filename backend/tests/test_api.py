@@ -58,3 +58,18 @@ def test_motion_diagnostics_rejects_oversized_batch() -> None:
         json=[{"sequence": i, "timestamp_ms": i, "body_landmarks": []} for i in range(3001)],
     )
     assert response.status_code == 422
+
+
+def test_api_responses_include_browser_security_headers() -> None:
+    response = client.get("/health")
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+    assert response.headers["permissions-policy"] == (
+        "camera=(self), microphone=(self), geolocation=()"
+    )
+
+
+def test_api_does_not_send_hsts_for_local_development() -> None:
+    response = client.get("/health")
+    assert "strict-transport-security" not in response.headers
