@@ -94,3 +94,20 @@ class PrivateMediaService:
             raise MediaServiceError(
                 "Media file is deleted but metadata cleanup is pending; retry is required."
             ) from exc
+
+
+    def retry_pending_deletions(self, *, limit: int = 100) -> dict[str, int]:
+        """Retry tombstoned file/metadata cleanup from a restricted background worker."""
+        pending = self.repository.list_pending_media_deletions(limit=limit)
+        deleted = 0
+        failed = 0
+        for record in pending:
+            try:
+                # Missing files are already physically deleted; delete_image is
+                # intentionally idempotent and returns False for that case.
+                self.storage.delete_image(record.media_id)
+                self.repository.finalize_media_deletion(media_id=record.media_id)
+                deleted += 1
+            except (MediaStorageError, MediaRepositoryError):
+                failed += 1
+        return {"processed": len(pending), "deleted": deleted, "failed": failed}
