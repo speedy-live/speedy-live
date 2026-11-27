@@ -162,6 +162,31 @@ async def register_customer(request: CustomerRegistrationRequest) -> dict[str, s
         raise HTTPException(status_code=503, detail="Verification email could not be sent. Please try again later.") from exc
 
 
+@app.post("/auth/resend-verification", status_code=202, tags=["authentication"])
+async def resend_customer_verification(request: LoginRequest) -> dict[str, str]:
+    """Resend a customer verification link without revealing whether an email exists."""
+    if not settings.smtp_host or not settings.smtp_from_email:
+        raise HTTPException(status_code=503, detail="Customer email verification is not configured.")
+    try:
+        store = AccountStore(settings.auth_database_path)
+        token = store.issue_customer_verification_token(email=request.email, lifetime_seconds=1800)
+        if token:
+            verification_url = (
+                f"{settings.customer_frontend_url.rstrip('/')}/verify-email?token={quote(token, safe='')}"
+            )
+            send_customer_verification_email(
+                host=settings.smtp_host, port=settings.smtp_port,
+                username=settings.smtp_username, password=settings.smtp_password,
+                sender=settings.smtp_from_email, recipient=request.email.strip(),
+                verification_url=verification_url, use_starttls=settings.smtp_starttls,
+            )
+    except (AccountStoreError, EmailDeliveryError, OSError) as exc:
+        logger.exception("Customer verification resend failed.")
+        raise HTTPException(status_code=503, detail="Verification email could not be sent. Please try again later.") from exc
+    return {"status": "accepted",
+            "message": "If the account needs verification, a new link will be sent."}
+
+
 @app.post("/auth/verify-email", tags=["authentication"])
 async def verify_customer_email(request: EmailVerificationRequest) -> dict[str, str]:
     try:
