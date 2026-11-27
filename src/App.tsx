@@ -950,6 +950,8 @@ export default function App() {
         </div>
       </section>
 
+      <MotionCapture />
+
       <PhotoStudio />
 
       <section className="data-section">
