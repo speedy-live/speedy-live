@@ -46,6 +46,7 @@ def configure_api_auth(monkeypatch):
         auth_signing_key=AUTH_KEY,
         auth_token_issuer="speedy-live-auth",
         auth_token_audience="speedy-live-api",
+        auth_database_path="unused-test-db",
     ))
 
 
