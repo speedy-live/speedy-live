@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -24,13 +27,29 @@ def manifest(**overrides):
     values = {
         "engine_id": "local-test-engine", "version": "0.1.0",
         "supported_modes": ["full_body"], "supports_streaming": False,
-        "checkpoint_sha256": "a" * 64, "code_license": "Apache-2.0",
+        "checkpoint_sha256": None, "code_license": "Apache-2.0",
         "weights_license": "Apache-2.0", "dependency_review_id": "deps-001",
         "dataset_rights_review_id": "dataset-001", "commercial_rights_verified": True,
         "inference_entrypoint": "local_worker.infer:run",
     }
     values.update(overrides)
     return EngineManifest(**values)
+
+
+def artifact_manifest(tmp_path, *, commercial=True, consent=True):
+    checkpoint = tmp_path / "weights.bin"
+    checkpoint.write_bytes(b"synthetic-test-checkpoint")
+    digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+    data = {
+        "model_id": "local-test-engine", "version": "0.1.0",
+        "task": "full_body_animation", "checkpoint_file": "weights.bin",
+        "checkpoint_sha256": digest, "architecture": "synthetic-test-only",
+        "input_contract": "speedy_motion_v1", "output_contract": "rgb_frames_v1",
+        "commercial_use_allowed": commercial, "training_data_consent_verified": consent,
+    }
+    path = tmp_path / "model-manifest.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path, digest
 
 
 def test_empty_registry_fails_closed():
@@ -40,29 +59,45 @@ def test_empty_registry_fails_closed():
         registry.get("full_body")
 
 
-def test_registry_rejects_identity_mismatch():
+def test_registry_rejects_identity_mismatch(tmp_path):
+    path, digest = artifact_manifest(tmp_path)
     with pytest.raises(EngineQualificationError, match="identity/version"):
-        EngineRegistry().register(LocalStubEngine(), manifest(engine_id="other"))
+        EngineRegistry().register(LocalStubEngine(), manifest(engine_id="other", checkpoint_sha256=digest), path)
 
 
-def test_registry_accepts_matching_qualified_adapter():
+def test_registry_accepts_only_matching_verified_local_artifact(tmp_path):
+    path, digest = artifact_manifest(tmp_path)
     registry = EngineRegistry()
     engine = LocalStubEngine()
-    registry.register(engine, manifest())
+    registry.register(engine, manifest(checkpoint_sha256=digest), path)
     assert registry.get("full_body") is engine
     assert registry.status()["engine_id"] == engine.name
 
 
-def test_registry_rejects_portrait_when_not_supported():
+def test_registry_rejects_checkpoint_hash_mismatch(tmp_path):
+    path, _ = artifact_manifest(tmp_path)
+    with pytest.raises(EngineQualificationError, match="checkpoint hash"):
+        EngineRegistry().register(LocalStubEngine(), manifest(checkpoint_sha256="a" * 64), path)
+
+
+def test_registry_rejects_missing_commercial_rights(tmp_path):
+    path, digest = artifact_manifest(tmp_path, commercial=False)
+    with pytest.raises(EngineQualificationError, match="commercial"):
+        EngineRegistry().register(LocalStubEngine(), manifest(checkpoint_sha256=digest), path)
+
+
+def test_registry_rejects_unverified_training_consent(tmp_path):
+    path, digest = artifact_manifest(tmp_path, consent=False)
+    with pytest.raises(EngineQualificationError, match="consent"):
+        EngineRegistry().register(LocalStubEngine(), manifest(checkpoint_sha256=digest), path)
+
+
+def test_registry_rejects_portrait_when_artifact_is_full_body(tmp_path):
+    path, digest = artifact_manifest(tmp_path)
     registry = EngineRegistry()
-    registry.register(LocalStubEngine(), manifest())
+    registry.register(LocalStubEngine(), manifest(checkpoint_sha256=digest), path)
     with pytest.raises(EngineQualificationError, match="does not support portrait"):
         registry.get("portrait", live=True)
-
-
-def test_registry_rejects_missing_commercial_rights():
-    with pytest.raises(EngineQualificationError, match="commercial-rights"):
-        EngineRegistry().register(LocalStubEngine(), manifest(commercial_rights_verified=False))
 
 
 def test_api_reports_engine_unconfigured():
